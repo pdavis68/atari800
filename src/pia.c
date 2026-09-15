@@ -42,35 +42,91 @@
 #include "statesav.h"
 #endif
 
-UBYTE PIA_PACTL;
-UBYTE PIA_PBCTL;
-UBYTE PIA_PORTA;
-UBYTE PIA_PORTB;
-UBYTE PIA_PORT_input[2];
+/* Transitional Option C bridge: the per-instance PIA state lives in
+   PIA_state_t (instance.h). Within pia.c the legacy global names are
+   aliases into the file-scope context pointer `PI`, which is pinned to the
+   default instance until callers pass an instance explicitly. */
+static PIA_state_t *PI;
+#undef PIA_PACTL
+#undef PIA_PBCTL
+#undef PIA_PORTA
+#undef PIA_PORTB
+#undef PIA_PORTA_mask
+#undef PIA_PORTB_mask
+#undef PIA_PORT_input
+#undef PIA_CA1
+#undef PIA_CB1
+#undef PIA_CA2
+#undef PIA_CB2
+#undef PIA_IRQ
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *PINST;
+#define PIA_PIN_CTX(inst) ((void) (PINST = (inst), PI = &(inst)->pia))
+#define PIA_PACTL      (PI->PACTL)
+#define PIA_PBCTL      (PI->PBCTL)
+#define PIA_PORTA      (PI->PORTA)
+#define PIA_PORTB      (PI->PORTB)
+#define PIA_PORTA_mask (PI->PORTA_mask)
+#define PIA_PORTB_mask (PI->PORTB_mask)
+#define PIA_PORT_input (PI->PORT_input)
+#define PIA_CA1        (PI->CA1)
+#define PIA_CB1        (PI->CB1)
+#define PIA_CA2        (PI->CA2)
+#define PIA_CB2        (PI->CB2)
+#define PIA_IRQ        (PI->IRQ)
 
-UBYTE PIA_PORTA_mask;
-UBYTE PIA_PORTB_mask;
-/* PROCEED (CA1) pin state */
-int PIA_CA1 = 1;
-int PIA_CA1_negpending = 0;
-int PIA_CA1_pospending = 0;
-/* CA2 (cassette motor) pin state */
-int PIA_CA2 = 1;
-int PIA_CA2_negpending = 0;
-int PIA_CA2_pospending = 0;
-/* INTERRUPT (CB1) pin state */
-int PIA_CB1 = 1;
-int PIA_CB1_negpending = 0;
-int PIA_CB1_pospending = 0;
-/* CB2 (command frame) pin state */
-int PIA_CB2 = 1;
-int PIA_CB2_negpending = 0;
-int PIA_CB2_pospending = 0;
-/* PIA IRQ status */
-int PIA_IRQ = 0;
+/* The pia.h forwarding macros route legacy names to the default instance;
+   inside pia.c they are redefined to route to the instance pinned by
+   PIA_PIN_CTX() so the *_Ctx() bodies operate on their own instance. */
+#undef PIA_Initialise
+#undef PIA_Reset
+#undef PIA_SetCA1
+#undef PIA_SetCB1
+#undef update_PIA_IRQ
+#undef PIA_StateSave
+#undef PIA_StateRead
+#define PIA_Initialise(argc, argv) PIA_Initialise_Ctx(PINST, argc, argv)
+#define PIA_Reset()                PIA_Reset_Ctx(PINST)
+#define PIA_SetCA1(value)          PIA_SetCA1_Ctx(PINST, value)
+#define PIA_SetCB1(value)          PIA_SetCB1_Ctx(PINST, value)
+#define update_PIA_IRQ()           update_PIA_IRQ_Ctx(PINST)
+#define PIA_StateSave()            PIA_StateSave_Ctx(PINST)
+#define PIA_StateRead(version)     PIA_StateRead_Ctx(PINST, version)
 
-int PIA_Initialise(int *argc, char *argv[])
+/* Legacy entry points kept for the memory-map function-pointer tables and
+   not-yet-migrated callers; they pin the default instance. They must be
+   defined before the internal PIA_GetByte/PIA_PutByte macros below. */
+UBYTE PIA_GetByte(UWORD addr, int no_side_effects)
 {
+	return PIA_GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+void PIA_PutByte(UWORD addr, UBYTE byte)
+{
+	PIA_PutByte_Ctx(Atari800_default, addr, byte);
+}
+
+#undef PIA_GetByte
+#undef PIA_PutByte
+#define PIA_GetByte(addr, no_side_effects) PIA_GetByte_Ctx(PINST, addr, no_side_effects)
+#define PIA_PutByte(addr, byte)            PIA_PutByte_Ctx(PINST, addr, byte)
+
+/* PROCEED (CA1) pin state */
+static int PIA_CA1_negpending = 0;
+static int PIA_CA1_pospending = 0;
+/* CA2 (cassette motor) pin state */
+static int PIA_CA2_negpending = 0;
+static int PIA_CA2_pospending = 0;
+/* INTERRUPT (CB1) pin state */
+static int PIA_CB1_negpending = 0;
+static int PIA_CB1_pospending = 0;
+/* CB2 (command frame) pin state */
+static int PIA_CB2_negpending = 0;
+static int PIA_CB2_pospending = 0;
+
+int PIA_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
+{
+	PIA_PIN_CTX(inst);
 	PIA_PACTL = 0x3f;
 	PIA_PBCTL = 0x3f;
 	PIA_PORTA = 0xff;
@@ -85,8 +141,9 @@ int PIA_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void PIA_Reset(void)
+void PIA_Reset_Ctx(Atari800_Instance *inst)
 {
+	PIA_PIN_CTX(inst);
 	PIA_PORTA = 0xff;
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 		MEMORY_HandlePORTB(0xff, (UBYTE) (PIA_PORTB | PIA_PORTB_mask));
@@ -118,8 +175,9 @@ static void set_CB2(int value)
 }
     
 /* Set PROCEED pin (CA1) */
-void PIA_SetCA1(int value)
+void PIA_SetCA1_Ctx(Atari800_Instance *inst, int value)
 {
+	PIA_PIN_CTX(inst);
 	if (PIA_CA1 != value) {
 		int active_transition = ((value == 1) == ((PIA_PACTL & 0x01) != 0));
 		if (active_transition) {
@@ -131,8 +189,9 @@ void PIA_SetCA1(int value)
 }
 
 /* Set INTERRUPT pin (CB1) */
-void PIA_SetCB1(int value)
+void PIA_SetCB1_Ctx(Atari800_Instance *inst, int value)
 {
+	PIA_PIN_CTX(inst);
 	if (PIA_CB1 != value) {
 		int active_transition = ((value == 1) == ((PIA_PBCTL & 0x01) != 0));
 		if (active_transition) {
@@ -143,8 +202,9 @@ void PIA_SetCB1(int value)
 	}
 }
 
-void update_PIA_IRQ(void)
+void update_PIA_IRQ_Ctx(Atari800_Instance *inst)
 {
+	PIA_PIN_CTX(inst);
 	PIA_IRQ = 0;
 	if (((PIA_PACTL & 0x40) && (PIA_PACTL & 0x28) == 0x08) || 
 		 ((PIA_PBCTL & 0x40) && (PIA_PBCTL & 0x28) == 0x08) ||
@@ -156,8 +216,9 @@ void update_PIA_IRQ(void)
 	POKEY_PutByte(POKEY_OFFSET_IRQEN, POKEY_IRQEN);
 }
 
-UBYTE PIA_GetByte(UWORD addr, int no_side_effects)
+UBYTE PIA_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
+	PIA_PIN_CTX(inst);
 	switch (addr & 0x03) {
 	case PIA_OFFSET_PACTL: 
 		/* read CRA (control register A) */
@@ -218,8 +279,9 @@ UBYTE PIA_GetByte(UWORD addr, int no_side_effects)
 	return 0xff;
 }
 
-void PIA_PutByte(UWORD addr, UBYTE byte)
+void PIA_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	PIA_PIN_CTX(inst);
 	switch (addr & 0x03) {
 	case PIA_OFFSET_PACTL: 
 		/* write CRA (control register A) */
@@ -375,8 +437,9 @@ void PIA_PutByte(UWORD addr, UBYTE byte)
 
 #ifndef BASIC
 
-void PIA_StateSave(void)
+void PIA_StateSave_Ctx(Atari800_Instance *inst)
 {
+	PIA_PIN_CTX(inst);
 	STATESAV_TAG(pia);
 	StateSav_SaveUBYTE( &PIA_PACTL, 1 );
 	StateSav_SaveUBYTE( &PIA_PBCTL, 1 );
@@ -393,8 +456,9 @@ void PIA_StateSave(void)
 	StateSav_SaveINT( &PIA_CB2_pospending, 1 );
 }
 
-void PIA_StateRead(UBYTE version)
+void PIA_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 {
+	PIA_PIN_CTX(inst);
 	UBYTE byte;
 	int temp;
 

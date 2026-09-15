@@ -19,6 +19,8 @@
 #ifndef INSTANCE_H_
 #define INSTANCE_H_
 
+#include <stdio.h> /* FILENAME_MAX, FILE */
+
 #include "atari.h" /* UBYTE, UWORD, ULONG, TRUE/FALSE */
 #include "screen.h" /* Screen_WIDTH */
 
@@ -230,10 +232,148 @@ typedef struct PIA_state_t {
 /* Peripheral sub-structs (forward-declared; migrated in later phases) */
 /* ------------------------------------------------------------------ */
 
-typedef struct SIO_state_t SIO_state_t;
-typedef struct Devices_state_t Devices_state_t;
-typedef struct Cartridge_state_t Cartridge_state_t;
-typedef struct Cassette_state_t Cassette_state_t;
+/* ------------------------------------------------------------------ */
+/* SIO state                                                          */
+/* ------------------------------------------------------------------ */
+
+#define SIO_MAX_DRIVES 8
+
+typedef enum SIO_tagUnitStatus {
+	SIO_OFF,
+	SIO_NO_DISK,
+	SIO_READ_ONLY,
+	SIO_READ_WRITE
+} SIO_UnitStatus;
+
+typedef struct SIO_state_t {
+	/* Public state (legacy globals). */
+	char status[256];
+	SIO_UnitStatus drive_status[SIO_MAX_DRIVES];
+	char filename[SIO_MAX_DRIVES][FILENAME_MAX];
+	int last_op;
+	int last_op_time;
+	int last_drive; /* 1 .. 8 */
+	int last_sector;
+	int format_sectorcount[SIO_MAX_DRIVES];
+	int format_sectorsize[SIO_MAX_DRIVES];
+	/* Internal per-drive state. */
+	int boot_sectors_type[SIO_MAX_DRIVES];
+	int image_type[SIO_MAX_DRIVES];
+	FILE *disk[SIO_MAX_DRIVES];
+	int sectorcount[SIO_MAX_DRIVES];
+	int sectorsize[SIO_MAX_DRIVES];
+	int io_success[SIO_MAX_DRIVES];
+	void *additional_info[SIO_MAX_DRIVES];
+	/* Serial frame state. */
+	UBYTE CommandFrame[6];
+	int CommandIndex;
+	UBYTE DataBuffer[65535 + 3]; /* large buffer for FujiNet */
+	int DataIndex;
+	int TransferStatus;
+	int ExpectedBytes;
+	int delay_counter;
+	int last_ypos;
+} SIO_state_t;
+
+/* ------------------------------------------------------------------ */
+/* Devices (H:/P:/R:/B: patches) state                                */
+/* ------------------------------------------------------------------ */
+
+struct DEV_B {
+	char url[512];
+	int  pos;
+	int  ready;
+};
+
+typedef struct Devices_state_t {
+	/* Public state (legacy globals). */
+	int enable_h_patch;
+	int enable_p_patch;
+	int enable_r_patch;
+	int enable_b_patch;
+	char atari_h_dir[4][FILENAME_MAX];
+	int h_read_only;
+	char h_exe_path[FILENAME_MAX];
+	char h_device_name;
+	char h_current_dir[4][FILENAME_MAX];
+	char print_command[256];
+	struct DEV_B dev_b_status;
+	/* Internal H: device state. */
+	FILE *h_fp[8];
+	int h_textmode[8];
+	int h_lastbyte[8];
+	int h_wascr[8];
+	char h_lastop[8];
+	int h_iocb;
+	int h_devnum;
+	char atari_filename[FILENAME_MAX];
+	char new_filename[FILENAME_MAX];
+	char atari_path[FILENAME_MAX];
+	char host_path[FILENAME_MAX];
+} Devices_state_t;
+
+/* ------------------------------------------------------------------ */
+/* Cartridge state                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Moved here from cartridge.h so Cartridge_state_t can embed it by value. */
+typedef struct CARTRIDGE_image_t {
+	int type;
+	int state; /* Cartridge's state, such as selected bank or switch on/off. */
+	int size; /* Size of the image, in kilobytes. */
+	UBYTE *image;
+	char filename[FILENAME_MAX];
+	int raw; /* File contains RAW data (important for writeable cartridges). */
+} CARTRIDGE_image_t;
+
+typedef struct Cartridge_state_t {
+	CARTRIDGE_image_t main;      /* Left/Right cartridge */
+	CARTRIDGE_image_t piggyback; /* Pass through cartridge for SpartaDOSX */
+	int autoreboot;
+	/* Internal: currently active cartridge image (main or piggyback). */
+	CARTRIDGE_image_t *active_cart;
+} Cartridge_state_t;
+
+/* ------------------------------------------------------------------ */
+/* Cassette state                                                     */
+/* ------------------------------------------------------------------ */
+
+/* Moved here from cassette.h so Cassette_state_t can embed it by value. */
+typedef enum {
+	CASSETTE_STATUS_NONE,
+	CASSETTE_STATUS_READ_ONLY,
+	CASSETTE_STATUS_READ_WRITE
+} CASSETTE_status_t;
+
+#ifndef IMG_TAPE_T_DEFINED
+#define IMG_TAPE_T_DEFINED
+typedef struct IMG_TAPE_t IMG_TAPE_t;
+#endif
+
+typedef struct Cassette_state_t {
+	/* Public state (legacy globals). */
+	char filename[FILENAME_MAX];
+	char description[256]; /* CASSETTE_DESCRIPTION_MAX */
+	CASSETTE_status_t status;
+	int hold_start;
+	int hold_start_on_reboot; /* preserve hold_start after reboot */
+	int press_space;
+	int write_protect;
+	int record;
+	int readable;
+	int writable;
+	/* Internal tape state. */
+	IMG_TAPE_t *cassette_file;
+	SLONG event_time_left;
+	int pending_serin;
+	int passing_gap;
+	UBYTE pending_serin_byte;
+	UBYTE serin_byte;
+	int cassette_gapdelay; /* in ms, includes leader and all gaps */
+	int cassette_motor;
+	int eof_of_tape;
+} Cassette_state_t;
+
 typedef struct PBI_state_t PBI_state_t;
 typedef struct Input_state_t Input_state_t;
 typedef struct Screen_state_t Screen_state_t;
@@ -253,10 +393,10 @@ typedef struct Atari800_Instance {
 	PIA_state_t pia;
 
 	/* Peripherals (allocated separately; migrated in later phases) */
-	SIO_state_t *sio;
-	Devices_state_t *devices;
-	Cartridge_state_t *cartridge;
-	Cassette_state_t *cassette;
+	SIO_state_t sio;
+	Devices_state_t devices;
+	Cartridge_state_t cartridge;
+	Cassette_state_t cassette;
 	PBI_state_t *pbi;
 	Input_state_t *input;
 	Screen_state_t *screen;

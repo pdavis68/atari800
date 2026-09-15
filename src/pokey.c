@@ -66,47 +66,117 @@
 void pokey_update(void);
 #endif
 
-UBYTE POKEY_KBCODE;
-UBYTE POKEY_SERIN;
-UBYTE POKEY_IRQST;
-UBYTE POKEY_IRQEN;
-UBYTE POKEY_SKSTAT;
-UBYTE POKEY_SKCTL;
-int POKEY_DELAYED_SERIN_IRQ;
-int POKEY_DELAYED_SEROUT_IRQ;
-int POKEY_DELAYED_XMTDONE_IRQ;
+/* Transitional Option C bridge: the per-instance POKEY state lives in
+   POKEY_state_t (instance.h). Within pokey.c the legacy global names are
+   aliases into the file-scope context pointer `PK`, which is pinned to the
+   default instance until callers pass an instance explicitly. */
+static POKEY_state_t *PK;
+#undef POKEY_KBCODE
+#undef POKEY_IRQST
+#undef POKEY_IRQEN
+#undef POKEY_SKSTAT
+#undef POKEY_SKCTL
+#undef POKEY_DELAYED_SERIN_IRQ
+#undef POKEY_DELAYED_SEROUT_IRQ
+#undef POKEY_DELAYED_XMTDONE_IRQ
+#undef POKEY_POT_input
+#undef POKEY_AUDF
+#undef POKEY_AUDC
+#undef POKEY_AUDCTL
+#undef POKEY_DivNIRQ
+#undef POKEY_DivNMax
+#undef POKEY_Base_mult
 #ifdef NEW_CYCLE_EXACT
-int POKEY_irq_at_xpos;
-UBYTE POKEY_irq_pending_mask;
+#undef POKEY_irq_at_xpos
+#undef POKEY_irq_pending_mask
+#endif
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *PKI;
+#define POKEY_PIN_CTX(inst) ((void) (PKI = (inst), PK = &(inst)->pokey))
+#define POKEY_KBCODE           (PK->KBCODE)
+#define POKEY_IRQST            (PK->IRQST)
+#define POKEY_IRQEN            (PK->IRQEN)
+#define POKEY_SKSTAT           (PK->SKSTAT)
+#define POKEY_SKCTL            (PK->SKCTL)
+#define POKEY_DELAYED_SERIN_IRQ  (PK->DELAYED_SERIN_IRQ)
+#define POKEY_DELAYED_SEROUT_IRQ (PK->DELAYED_SEROUT_IRQ)
+#define POKEY_DELAYED_XMTDONE_IRQ (PK->DELAYED_XMTDONE_IRQ)
+#define POKEY_POT_input        (PK->POT_input)
+#define POKEY_AUDF   (PK->AUDF)
+#define POKEY_AUDC   (PK->AUDC)
+#define POKEY_AUDCTL (PK->AUDCTL)
+#define POKEY_DivNIRQ (PK->DivNIRQ)
+#define POKEY_DivNMax (PK->DivNMax)
+#define POKEY_Base_mult (PK->Base_mult)
+#ifdef NEW_CYCLE_EXACT
+#define POKEY_irq_at_xpos      (PK->irq_at_xpos)
+#define POKEY_irq_pending_mask (PK->irq_pending_mask)
+#endif
+
+/* The pokey.h forwarding macros route legacy names to the default instance;
+   inside pokey.c they are redefined to route to the instance pinned by
+   POKEY_PIN_CTX() so the *_Ctx() bodies operate on their own instance. */
+#undef POKEY_Initialise
+#undef POKEY_Frame
+#undef POKEY_Scanline
+#undef POKEY_StateSave
+#undef POKEY_StateRead
+#undef POKEY_GetRandomCounter
+#undef POKEY_SetRandomCounter
+#define POKEY_Initialise(argc, argv) POKEY_Initialise_Ctx(PKI, argc, argv)
+#define POKEY_Frame()                POKEY_Frame_Ctx(PKI)
+#define POKEY_Scanline()             POKEY_Scanline_Ctx(PKI)
+#define POKEY_StateSave()            POKEY_StateSave_Ctx(PKI)
+#define POKEY_StateRead()            POKEY_StateRead_Ctx(PKI)
+#define POKEY_GetRandomCounter()     POKEY_GetRandomCounter_Ctx(PKI)
+#define POKEY_SetRandomCounter(v)    POKEY_SetRandomCounter_Ctx(PKI, v)
+
+/* Legacy entry points kept for the memory-map function-pointer tables and
+   not-yet-migrated callers; they pin the default instance. They must be
+   defined before the internal POKEY_GetByte/POKEY_PutByte macros below. */
+UBYTE POKEY_GetByte(UWORD addr, int no_side_effects)
+{
+	return POKEY_GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+void POKEY_PutByte(UWORD addr, UBYTE byte)
+{
+	POKEY_PutByte_Ctx(Atari800_default, addr, byte);
+}
+
+#undef POKEY_GetByte
+#undef POKEY_PutByte
+#define POKEY_GetByte(addr, no_side_effects) POKEY_GetByte_Ctx(PKI, addr, no_side_effects)
+#define POKEY_PutByte(addr, byte)            POKEY_PutByte_Ctx(PKI, addr, byte)
+
+UBYTE POKEY_SERIN;
+#ifdef NEW_CYCLE_EXACT
 static int irq_15khz_phase;
 #endif
 
 /* structures to hold the 9 pokey control bytes */
-UBYTE POKEY_AUDF[4 * POKEY_MAXPOKEYS];	/* AUDFx (D200, D202, D204, D206) */
-UBYTE POKEY_AUDC[4 * POKEY_MAXPOKEYS];	/* AUDCx (D201, D203, D205, D207) */
-UBYTE POKEY_AUDCTL[POKEY_MAXPOKEYS];	/* AUDCTL (D208) */
-int POKEY_DivNIRQ[4], POKEY_DivNMax[4];
-int POKEY_Base_mult[POKEY_MAXPOKEYS];		/* selects either 64Khz or 15Khz clock mult */
 
-UBYTE POKEY_POT_input[8] = {228, 228, 228, 228, 228, 228, 228, 228};
 static int pot_scanline;
 
 UBYTE POKEY_poly9_lookup[511];
 UBYTE POKEY_poly17_lookup[16385];
 static ULONG random_scanline_counter;
 
-ULONG POKEY_GetRandomCounter(void)
+ULONG POKEY_GetRandomCounter_Ctx(Atari800_Instance *inst)
 {
+	POKEY_PIN_CTX(inst);
 	return random_scanline_counter;
 }
 
-void POKEY_SetRandomCounter(ULONG value)
+void POKEY_SetRandomCounter_Ctx(Atari800_Instance *inst, ULONG value)
 {
+	POKEY_PIN_CTX(inst);
 	random_scanline_counter = value;
 }
 
-UBYTE POKEY_GetByte(UWORD addr, int no_side_effects)
+UBYTE POKEY_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
+	POKEY_PIN_CTX(inst);
 	UBYTE byte = 0xff;
 
 #ifdef STEREO_SOUND
@@ -208,8 +278,9 @@ static int POKEY_serial_byte_delay(void)
 #define POKEYSND_Update(addr, val, chip, gain)
 #endif
 
-void POKEY_PutByte(UWORD addr, UBYTE byte)
+void POKEY_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	POKEY_PIN_CTX(inst);
 #ifdef STEREO_SOUND
 	addr &= POKEYSND_stereo_enabled ? 0x1f : 0x0f;
 #else
@@ -438,8 +509,9 @@ void POKEY_PutByte(UWORD addr, UBYTE byte)
 	}
 }
 
-int POKEY_Initialise(int *argc, char *argv[])
+int POKEY_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	POKEY_PIN_CTX(inst);
 	int i;
 	ULONG reg;
 
@@ -511,8 +583,9 @@ int POKEY_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void POKEY_Frame(void)
+void POKEY_Frame_Ctx(Atari800_Instance *inst)
 {
+	POKEY_PIN_CTX(inst);
 	random_scanline_counter %= (POKEY_AUDCTL[0] & POKEY_POLY9) ? POKEY_POLY9_SIZE : POKEY_POLY17_SIZE;
 }
 
@@ -540,8 +613,9 @@ static int irq_tick_xpos(int old_divn)
 }
 #endif
 
-void POKEY_Scanline(void)
+void POKEY_Scanline_Ctx(Atari800_Instance *inst)
 {
+	POKEY_PIN_CTX(inst);
 #ifdef POKEYREC
     POKEYREC_Recorder();
 #endif
@@ -802,8 +876,9 @@ static void Update_Counter(int chan_mask)
 
 #ifndef BASIC
 
-void POKEY_StateSave(void)
+void POKEY_StateSave_Ctx(Atari800_Instance *inst)
 {
+	POKEY_PIN_CTX(inst);
 	int shift_key = 0;
 	int keypressed = 0;
 
@@ -828,8 +903,9 @@ void POKEY_StateSave(void)
 	StateSav_SaveINT(&POKEY_Base_mult[0], 1);
 }
 
-void POKEY_StateRead(void)
+void POKEY_StateRead_Ctx(Atari800_Instance *inst)
 {
+	POKEY_PIN_CTX(inst);
 	int i;
 	int shift_key;
 	int keypressed;

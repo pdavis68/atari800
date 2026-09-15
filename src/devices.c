@@ -485,63 +485,45 @@ static UBYTE Devices_RemoveDirectory(const char *filename)
 /* emulator debugging mode */
 static int devbug = FALSE;
 
-/* host path for each H: unit */
-char Devices_atari_h_dir[4][FILENAME_MAX];
-
-/* read only mode for H: device */
-int Devices_h_read_only = TRUE;
-
-/* ';'-separated list of Atari paths checked by the "load executable"
-   command. if a path does not start with "Hn:", then the selected device
-   is used. */
-char Devices_h_exe_path[FILENAME_MAX] = DEFAULT_H_PATH;
-
-/* H device rename; one can add 'D' in command line */
-char Devices_h_device_name = 'H';
-
-/* Devices_h_current_dir must be empty or terminated with Util_DIR_SEP_CHAR;
-   only Util_DIR_SEP_CHAR can be used as a directory separator here */
-char Devices_h_current_dir[4][FILENAME_MAX];
-
-/* stream open via H: device per IOCB */
-static FILE *h_fp[8] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
-
-/* H: text mode per IOCB */
-static int h_textmode[8];
-
-/* H: last read character per IOCB */
-static int h_lastbyte[8];
-
-/* last read character was CR, per IOCB */
-static int h_wascr[8];
-
-/* last operation: 'o': open, 'r': read, 'w': write, 'p': point, 'b': binary
-   load, per IOCB. This is needed to apply fseek(fp, 0, SEEK_CUR) between reads
-   and writes in update (12) mode, and to support the read-ahead of 1 byte
-   in Devices_h_read. */
-static char h_lastop[8];
+/* Transitional Option C bridge: the per-instance Devices state lives in
+   Devices_state_t (instance.h). Within devices.c the legacy global/static
+   names are aliases into the default instance (via
+   Atari800_default->devices.*). */
+#undef Devices_enable_h_patch
+#undef Devices_enable_p_patch
+#undef Devices_enable_r_patch
+#undef Devices_enable_b_patch
+#undef Devices_atari_h_dir
+#undef Devices_h_read_only
+#undef Devices_h_exe_path
+#undef Devices_h_device_name
+#undef Devices_h_current_dir
+#undef Devices_print_command
+#undef dev_b_status
+#define Devices_enable_h_patch (Atari800_default->devices.enable_h_patch)
+#define Devices_enable_p_patch (Atari800_default->devices.enable_p_patch)
+#define Devices_enable_r_patch (Atari800_default->devices.enable_r_patch)
+#define Devices_enable_b_patch (Atari800_default->devices.enable_b_patch)
+#define Devices_atari_h_dir    (Atari800_default->devices.atari_h_dir)
+#define Devices_h_read_only    (Atari800_default->devices.h_read_only)
+#define Devices_h_exe_path     (Atari800_default->devices.h_exe_path)
+#define Devices_h_device_name  (Atari800_default->devices.h_device_name)
+#define Devices_h_current_dir  (Atari800_default->devices.h_current_dir)
+#define Devices_print_command  (Atari800_default->devices.print_command)
+#define dev_b_status           (Atari800_default->devices.dev_b_status)
+#define h_fp            (Atari800_default->devices.h_fp)
+#define h_textmode      (Atari800_default->devices.h_textmode)
+#define h_lastbyte      (Atari800_default->devices.h_lastbyte)
+#define h_wascr         (Atari800_default->devices.h_wascr)
+#define h_lastop        (Atari800_default->devices.h_lastop)
+#define h_iocb          (Atari800_default->devices.h_iocb)
+#define h_devnum        (Atari800_default->devices.h_devnum)
+#define atari_filename  (Atari800_default->devices.atari_filename)
+#define new_filename    (Atari800_default->devices.new_filename)
+#define atari_path      (Atari800_default->devices.atari_path)
+#define host_path       (Atari800_default->devices.host_path)
 
 Util_tmpbufdef(static, h_tmpbuf[8])
-
-/* IOCB #, 0-7 */
-static int h_iocb;
-
-/* H: device number, 0-3 */
-static int h_devnum;
-
-/* filename as specified after "Hn:" */
-static char atari_filename[FILENAME_MAX];
-
-#ifdef DO_RENAME
-/* new filename (no directories!) */
-static char new_filename[FILENAME_MAX];
-#endif
-
-/* atari_filename applied to H:'s current dir, with Util_DIR_SEP_CHARs only */
-static char atari_path[FILENAME_MAX];
-
-/* full filename for the current operation */
-static char host_path[FILENAME_MAX];
 
 int Devices_H_CountOpen(void)
 {
@@ -1846,7 +1828,6 @@ static void Devices_H_Special(void)
 
 /* P: device emulation --------------------------------------------------- */
 
-char Devices_print_command[256] = "lpr %s";
 
 int Devices_SetPrintCommand(const char *command)
 {
@@ -2057,7 +2038,6 @@ static void Devices_K_Read(void)
  * browser access.
  */
 
-struct DEV_B dev_b_status;
 
 static void Devices_B_Open(void)
 {
@@ -2387,10 +2367,6 @@ static void Devices_CloseBasicFile(void)
 
 /* Patches management ---------------------------------------------------- */
 
-int Devices_enable_h_patch = TRUE;
-int Devices_enable_p_patch = TRUE;
-int Devices_enable_r_patch = FALSE;
-int Devices_enable_b_patch = FALSE;
 
 /* Devices_PatchOS is called by ESC_PatchOS to modify standard device
    handlers in Atari OS. It puts escape codes at beginnings of OS routines,

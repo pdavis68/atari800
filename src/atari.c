@@ -193,6 +193,32 @@ static Atari800_Instance default_instance_storage = {
 		.cur_screen_pos = ANTIC_NOT_DRAWING,
 #endif
 	},
+	.gtia = {
+		.pm_dirty = TRUE,
+		.collisions_mask_missile_playfield = 0x0f,
+		.collisions_mask_player_playfield = 0x0f,
+		.collisions_mask_missile_player = 0x0f,
+		.collisions_mask_player_player = 0x0f,
+	},
+	.pokey = {
+		.POT_input = {228, 228, 228, 228, 228, 228, 228, 228},
+	},
+	.pia = {
+		.CA1 = 1,
+		.CA2 = 1,
+		.CB1 = 1,
+		.CB2 = 1,
+	},
+	.devices = {
+		.enable_h_patch = TRUE,
+		.enable_p_patch = TRUE,
+		.enable_r_patch = FALSE,
+		.enable_b_patch = FALSE,
+		.h_read_only = TRUE,
+		.h_exe_path = "H1:>DOS;>DOS",
+		.h_device_name = 'H',
+		.print_command = "lpr %s",
+	},
 };
 Atari800_Instance *Atari800_default = &default_instance_storage;
 

@@ -4,17 +4,16 @@
 #include <stdio.h>		/* for FILE and FILENAME_MAX */
 
 #include "atari.h"		/* for UBYTE */
+#include "instance.h" /* Cassette_state_t (transitional default-instance aliases) */
 
 #define CASSETTE_DESCRIPTION_MAX 256
 
-extern char CASSETTE_filename[FILENAME_MAX];
-extern char CASSETTE_description[CASSETTE_DESCRIPTION_MAX];
-typedef enum {
-	CASSETTE_STATUS_NONE,
-	CASSETTE_STATUS_READ_ONLY,
-	CASSETTE_STATUS_READ_WRITE
-} CASSETTE_status_t;
-extern CASSETTE_status_t CASSETTE_status;
+/* Transitional Option C bridge: the per-instance cassette state lives in
+   Cassette_state_t (instance.h). Until all callers pass an instance
+   explicitly, the legacy global names are aliased to the default instance. */
+#define CASSETTE_filename    (Atari800_default->cassette.filename)
+#define CASSETTE_description (Atari800_default->cassette.description)
+#define CASSETTE_status      (Atari800_default->cassette.status)
 
 /* Used in Atari800_Initialise during emulator initialisation */
 int CASSETTE_Initialise(int *argc, char *argv[]);
@@ -31,17 +30,17 @@ void CASSETTE_Remove(void);
    Returns TRUE on success, FALSE otherwise. */
 int CASSETTE_CreateCAS(char const *filename, char const *description);
 
-extern int CASSETTE_hold_start;
-extern int CASSETTE_hold_start_on_reboot; /* preserve hold_start after reboot */
-extern int CASSETTE_press_space;
+#define CASSETTE_hold_start           (Atari800_default->cassette.hold_start)
+#define CASSETTE_hold_start_on_reboot (Atari800_default->cassette.hold_start_on_reboot) /* preserve hold_start after reboot */
+#define CASSETTE_press_space          (Atari800_default->cassette.press_space)
 
 /* Is cassette file write-protected? Don't change directly, use CASSETTE_ToggleWriteProtect(). */
-extern int CASSETTE_write_protect;
+#define CASSETTE_write_protect        (Atari800_default->cassette.write_protect)
 /* Switches RO/RW. Fails with FALSE if the tape cannot be switched to RW. */
 int CASSETTE_ToggleWriteProtect(void);
 
  /* Is cassette record button pressed? Don't change directly, use CASSETTE_ToggleRecord(). */
-extern int CASSETTE_record;
+#define CASSETTE_record               (Atari800_default->cassette.record)
 /* If tape is mounted, switches recording on/off (otherwise return FALSE).
    Recording operations would fail if the tape is read-only. In such
    situation, when switching recording on the function returns FALSE. */
@@ -87,9 +86,9 @@ void CASSETTE_LeaderSave(void);
 
 /* Indicates whether the tape can be read from, ie. it's mounted and not on its
    end. */
-extern int CASSETTE_readable;
+#define CASSETTE_readable             (Atari800_default->cassette.readable)
 /* Indicates whether the tape can be written to, ie. it's mounted and not
    read-only. */
-extern int CASSETTE_writable;
+#define CASSETTE_writable             (Atari800_default->cassette.writable)
 
 #endif /* CASSETTE_H_ */

@@ -50,7 +50,25 @@
 
 /* #define DEBUG 1 */
 
-int CARTRIDGE_autoreboot = TRUE;
+/* Transitional Option C bridge: the per-instance cartridge state lives in
+   Cartridge_state_t (instance.h). Within cartridge.c the legacy global names
+   are aliases into the default instance (via Atari800_default->cartridge.*). */
+#undef CARTRIDGE_autoreboot
+#undef CARTRIDGE_main
+#undef CARTRIDGE_piggyback
+#define CARTRIDGE_autoreboot (Atari800_default->cartridge.autoreboot)
+#define CARTRIDGE_main     (Atari800_default->cartridge.main)
+#define CARTRIDGE_piggyback (Atari800_default->cartridge.piggyback)
+/* The default instance is zero-initialised, so active_cart starts NULL;
+   pin it to the main cartridge on first use. */
+#undef active_cart
+static void CARTRIDGE_PIN_CTX(void)
+{
+	Cartridge_state_t *c = &Atari800_default->cartridge;
+	if (c->active_cart == NULL)
+		c->active_cart = &c->main;
+}
+#define active_cart (Atari800_default->cartridge.active_cart)
 
 static int CartIsFor5200(int type)
 {
@@ -79,13 +97,10 @@ static int CartIsPassthrough(int type)
 	       type == CARTRIDGE_ATRAX_SDX_64 || type == CARTRIDGE_ATRAX_SDX_128;
 }
 
-CARTRIDGE_image_t CARTRIDGE_main = { CARTRIDGE_NONE, 0, 0, NULL, "", TRUE }; /* Left/Right cartridge */
-CARTRIDGE_image_t CARTRIDGE_piggyback = { CARTRIDGE_NONE, 0, 0, NULL, "", TRUE }; /* Pass through cartridge for SpartaDOSX */
 
 /* The currently active cartridge in the left slot - normally points to
    CARTRIDGE_main but can be switched to CARTRIDGE_piggyback if the main
    cartridge is a SpartaDOS X. */
-static CARTRIDGE_image_t *active_cart = &CARTRIDGE_main;
 
 static ULONG Calculate_RamCart_Address(int cart_type, int cart_state)
 {
@@ -480,6 +495,7 @@ static void SwitchBank(int old_state)
 
 void CARTRIDGE_UpdateState(CARTRIDGE_image_t *cart, int old_state)
 {
+	CARTRIDGE_PIN_CTX();
 	if (cart == active_cart)
 		SwitchBank(old_state);
 }
@@ -1276,6 +1292,7 @@ static void PutByte(CARTRIDGE_image_t *cart, UWORD addr, UBYTE byte)
 /* a read from D500-D5FF area */
 UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects)
 {
+	CARTRIDGE_PIN_CTX();
 #ifdef AF80
 	if (AF80_enabled) {
 		return AF80_D5GetByte(addr, no_side_effects);
@@ -1300,6 +1317,7 @@ UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects)
 /* a write to D500-D5FF area */
 void CARTRIDGE_PutByte(UWORD addr, UBYTE byte)
 {
+	CARTRIDGE_PIN_CTX();
 #ifdef AF80
 	if (AF80_enabled) {
 		AF80_D5PutByte(addr,byte);
@@ -1399,6 +1417,7 @@ static void access_5200SuperCart(UWORD addr)
 
 UBYTE CARTRIDGE_BountyBob1GetByte(UWORD addr, int no_side_effects)
 {
+	CARTRIDGE_PIN_CTX();
 	if (!no_side_effects)
 		access_BountyBob1(addr);
 	return MEMORY_dGetByte(addr);
@@ -1406,6 +1425,7 @@ UBYTE CARTRIDGE_BountyBob1GetByte(UWORD addr, int no_side_effects)
 
 UBYTE CARTRIDGE_BountyBob2GetByte(UWORD addr, int no_side_effects)
 {
+	CARTRIDGE_PIN_CTX();
 	if (!no_side_effects)
 		access_BountyBob2(addr);
 	return MEMORY_dGetByte(addr);
@@ -1413,6 +1433,7 @@ UBYTE CARTRIDGE_BountyBob2GetByte(UWORD addr, int no_side_effects)
 
 UBYTE CARTRIDGE_5200SuperCartGetByte(UWORD addr, int no_side_effects)
 {
+	CARTRIDGE_PIN_CTX();
 	if (!no_side_effects)
 		access_5200SuperCart(addr);
 	return MEMORY_dGetByte(addr);
@@ -1420,16 +1441,19 @@ UBYTE CARTRIDGE_5200SuperCartGetByte(UWORD addr, int no_side_effects)
 
 void CARTRIDGE_BountyBob1PutByte(UWORD addr, UBYTE value)
 {
+	CARTRIDGE_PIN_CTX();
 	access_BountyBob1(addr);
 }
 
 void CARTRIDGE_BountyBob2PutByte(UWORD addr, UBYTE value)
 {
+	CARTRIDGE_PIN_CTX();
 	access_BountyBob2(addr);
 }
 
 void CARTRIDGE_5200SuperCartPutByte(UWORD addr, UBYTE value)
 {
+	CARTRIDGE_PIN_CTX();
 	access_5200SuperCart(addr);
 }
 
@@ -1706,6 +1730,7 @@ void CARTRIDGE_SetTypeAutoReboot(CARTRIDGE_image_t *cart, int type)
 }
 
 void CARTRIDGE_ColdStart(void) {
+	CARTRIDGE_PIN_CTX();
 	active_cart = &CARTRIDGE_main;
 	ResetCartState(&CARTRIDGE_main);
 	ResetCartState(&CARTRIDGE_piggyback);
@@ -1937,6 +1962,7 @@ static void InitInsert(CARTRIDGE_image_t *cart)
 
 int CARTRIDGE_Initialise(int *argc, char *argv[])
 {
+	CARTRIDGE_PIN_CTX();
 	int i;
 	int j;
 	int help_only = FALSE;
@@ -2040,6 +2066,7 @@ void CARTRIDGE_Exit(void)
 
 void CARTRIDGE_StateRead(UBYTE version)
 {
+	CARTRIDGE_PIN_CTX();
 	int saved_type = CARTRIDGE_NONE;
 	char filename[FILENAME_MAX];
 
@@ -2113,6 +2140,7 @@ void CARTRIDGE_StateRead(UBYTE version)
 
 void CARTRIDGE_StateSave(void)
 {
+	CARTRIDGE_PIN_CTX();
 	int cart_save = CARTRIDGE_main.type;
 	
 	if (CARTRIDGE_piggyback.type != CARTRIDGE_NONE)

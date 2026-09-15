@@ -4,11 +4,15 @@
 #include "config.h"
 #include "atari.h"
 #include "cartridge_info.h"
+#include "instance.h" /* CARTRIDGE_image_t, Cartridge_state_t */
 
+/* Transitional Option C bridge: the per-instance cartridge state lives in
+   Cartridge_state_t (instance.h). Until all callers pass an instance
+   explicitly, the legacy global names are aliased to the default instance. */
 /* Indicates whether the emulator should automatically reboot (coldstart)
    after inserting/removing a cartridge. (Doesn't affect the piggyback
    cartridge - in this case system will never autoreboot.) */
-extern int CARTRIDGE_autoreboot;
+#define CARTRIDGE_autoreboot (Atari800_default->cartridge.autoreboot)
 
 /*
  * Ram-Cart state flag bits meaning:
@@ -45,17 +49,9 @@ extern int CARTRIDGE_autoreboot;
  * 17: control register type for 2x128K/256K and 1M from Zenon/Dial (0-write only, 1-read/write)
  * 18: bank select in 32M
  */
-typedef struct CARTRIDGE_image_t {
-	int type;
-	int state; /* Cartridge's state, such as selected bank or switch on/off. */
-	int size; /* Size of the image, in kilobytes. */
-	UBYTE *image;
-	char filename[FILENAME_MAX];
-	int raw; /* File contains RAW data (important for writeable cartridges). */
-} CARTRIDGE_image_t;
-
-extern CARTRIDGE_image_t CARTRIDGE_main;
-extern CARTRIDGE_image_t CARTRIDGE_piggyback;
+/* CARTRIDGE_image_t is defined in instance.h. */
+#define CARTRIDGE_main     (Atari800_default->cartridge.main)
+#define CARTRIDGE_piggyback (Atari800_default->cartridge.piggyback)
 
 int CARTRIDGE_ReadConfig(char *string, char *ptr);
 void CARTRIDGE_WriteConfig(FILE *fp);

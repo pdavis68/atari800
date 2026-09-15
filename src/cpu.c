@@ -65,6 +65,7 @@
 #else
 #include "antic.h"
 #include "atari.h"
+#include "log.h"
 #include "esc.h"
 #include "pokey.h"
 #include "memory.h"
@@ -2400,6 +2401,7 @@ void CPU_GO(int limit)
 		CPU_GetStatus(inst);
 
 #ifdef CRASH_MENU
+		Log_print("CIM: insn=%02x PC=%04x frame=%d", insn, GET_PC(), Atari800_nframes); /* TEMP-DEBUG */
 		UI_crash_address = GET_PC();
 		UI_crash_afterCIM = GET_PC() + 1;
 		UI_crash_code = insn;

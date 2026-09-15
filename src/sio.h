@@ -6,26 +6,21 @@
 #include <stdio.h> /* FILENAME_MAX */
 
 #include "atari.h"
+#include "instance.h" /* SIO_state_t, SIO_MAX_DRIVES, SIO_UnitStatus */
 
-#define SIO_MAX_DRIVES 8
-
-typedef enum SIO_tagUnitStatus {
-	SIO_OFF,
-	SIO_NO_DISK,
-	SIO_READ_ONLY,
-	SIO_READ_WRITE
-} SIO_UnitStatus;
-
-extern char SIO_status[256];
-extern SIO_UnitStatus SIO_drive_status[SIO_MAX_DRIVES];
-extern char SIO_filename[SIO_MAX_DRIVES][FILENAME_MAX];
+/* Transitional Option C bridge: the per-instance SIO state lives in
+   SIO_state_t (instance.h). Until all callers pass an instance explicitly,
+   the legacy global names are aliased to the default instance. */
+#define SIO_status      (Atari800_default->sio.status)
+#define SIO_drive_status (Atari800_default->sio.drive_status)
+#define SIO_filename    (Atari800_default->sio.filename)
 
 #define SIO_LAST_READ 0
 #define SIO_LAST_WRITE 1
-extern int SIO_last_op;
-extern int SIO_last_op_time;
-extern int SIO_last_drive; /* 1 .. 8 */
-extern int SIO_last_sector;
+#define SIO_last_op      (Atari800_default->sio.last_op)
+#define SIO_last_op_time (Atari800_default->sio.last_op_time)
+#define SIO_last_drive   (Atari800_default->sio.last_drive) /* 1 .. 8 */
+#define SIO_last_sector  (Atari800_default->sio.last_sector)
 
 int SIO_Mount(int diskno, const char *filename, int b_open_readonly);
 void SIO_Dismount(int diskno);
@@ -50,8 +45,8 @@ void SIO_Exit(void);
 #define SIO_ACK_INTERVAL      36
 
 /* These functions are also used by the 1450XLD Parallel disk device */
-extern int SIO_format_sectorcount[SIO_MAX_DRIVES];
-extern int SIO_format_sectorsize[SIO_MAX_DRIVES];
+#define SIO_format_sectorcount (Atari800_default->sio.format_sectorcount)
+#define SIO_format_sectorsize  (Atari800_default->sio.format_sectorsize)
 int SIO_ReadStatusBlock(int unit, UBYTE *buffer);
 int SIO_FormatDisk(int unit, UBYTE *buffer, int sectsize, int sectcount);
 void SIO_SizeOfSector(UBYTE unit, int sector, int *sz, ULONG *ofs);

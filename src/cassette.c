@@ -36,46 +36,56 @@
 #include "util.h"
 #include "pokey.h"
 
-static IMG_TAPE_t *cassette_file = NULL;
+/* Transitional Option C bridge: the per-instance cassette state lives in
+   Cassette_state_t (instance.h). Within cassette.c the legacy global/static
+   names are aliases into the default instance (via
+   Atari800_default->cassette.*). */
+#undef CASSETTE_filename
+#undef CASSETTE_description
+#undef CASSETTE_status
+#undef CASSETTE_hold_start
+#undef CASSETTE_hold_start_on_reboot
+#undef CASSETTE_press_space
+#undef CASSETTE_write_protect
+#undef CASSETTE_record
+#undef CASSETTE_readable
+#undef CASSETTE_writable
+#define CASSETTE_filename    (Atari800_default->cassette.filename)
+#define CASSETTE_description (Atari800_default->cassette.description)
+#define CASSETTE_status      (Atari800_default->cassette.status)
+#define CASSETTE_hold_start           (Atari800_default->cassette.hold_start)
+#define CASSETTE_hold_start_on_reboot (Atari800_default->cassette.hold_start_on_reboot)
+#define CASSETTE_press_space          (Atari800_default->cassette.press_space)
+#define CASSETTE_write_protect        (Atari800_default->cassette.write_protect)
+#define CASSETTE_record               (Atari800_default->cassette.record)
+#define CASSETTE_readable             (Atari800_default->cassette.readable)
+#define CASSETTE_writable             (Atari800_default->cassette.writable)
+#define cassette_file      (Atari800_default->cassette.cassette_file)
+#define event_time_left    (Atari800_default->cassette.event_time_left)
+#define pending_serin      (Atari800_default->cassette.pending_serin)
+#define passing_gap        (Atari800_default->cassette.passing_gap)
+#define pending_serin_byte (Atari800_default->cassette.pending_serin_byte)
+#define serin_byte         (Atari800_default->cassette.serin_byte)
+#define cassette_gapdelay  (Atari800_default->cassette.cassette_gapdelay)
+#define cassette_motor     (Atari800_default->cassette.cassette_motor)
+#define eof_of_tape        (Atari800_default->cassette.eof_of_tape)
 
 /* Time till the end of the current tape event (byte or gap), in CPU ticks. */
-static SLONG event_time_left = 0;
 
 /* Indicates that there is a SERIN transmission in progress and when it ends,
    the current byte should be copied to POKEY_SERIN. This can be reset by
    rewinding/removing the tape or by resetting POKEY.
    Note that this variable has any meaning when PASSING_GAP is FALSE,
    so it doesn't have to be reset during PASSING_IRG. */
-static int pending_serin = FALSE;
 
 /* Indicates that an Inter-Record-Gap is currently being passed. It's set to TRUE
    at the beginning of each block. */
-static int passing_gap = FALSE;
 
 /* if penting_serin == TRUE, this holds the byte that is currently loaded from
    tape. It might be later copied to serin_byte. */
-static UBYTE pending_serin_byte = 0xff;
 
-/* Byte most recently loaded from tape; will be accessed by SIO_GetByte(). */
-static UBYTE serin_byte = 0xff;
-
-char CASSETTE_filename[FILENAME_MAX];
-CASSETTE_status_t CASSETTE_status = CASSETTE_STATUS_NONE;
-int CASSETTE_write_protect = FALSE;
-int CASSETTE_record = FALSE;
-int CASSETTE_writable = FALSE;
-int CASSETTE_readable = FALSE;
-
-char CASSETTE_description[CASSETTE_DESCRIPTION_MAX];
-static int cassette_gapdelay = 0;	/* in ms, includes leader and all gaps */
-static int cassette_motor = 0;
-
-int CASSETTE_hold_start_on_reboot = 0;
-int CASSETTE_hold_start = 0;
-int CASSETTE_press_space = 0;
 /* Indicates whether the tape has ended. During saving the value is always 0;
    during loading it is equal to (CASSETTE_GetPosition() >= CASSETTE_GetSize()). */
-static int eof_of_tape = 0;
 
 /* Call this function after each change of
    cassette_motor, CASSETTE_status or eof_of_tape. */

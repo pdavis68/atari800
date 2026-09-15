@@ -37,55 +37,111 @@
 #include "pokeysnd.h"
 #include "screen.h"
 
-/* GTIA Registers ---------------------------------------------------------- */
-
-UBYTE GTIA_M0PL;
-UBYTE GTIA_M1PL;
-UBYTE GTIA_M2PL;
-UBYTE GTIA_M3PL;
-UBYTE GTIA_P0PL;
-UBYTE GTIA_P1PL;
-UBYTE GTIA_P2PL;
-UBYTE GTIA_P3PL;
-UBYTE GTIA_HPOSP0;
-UBYTE GTIA_HPOSP1;
-UBYTE GTIA_HPOSP2;
-UBYTE GTIA_HPOSP3;
-UBYTE GTIA_HPOSM0;
-UBYTE GTIA_HPOSM1;
-UBYTE GTIA_HPOSM2;
-UBYTE GTIA_HPOSM3;
-UBYTE GTIA_SIZEP0;
-UBYTE GTIA_SIZEP1;
-UBYTE GTIA_SIZEP2;
-UBYTE GTIA_SIZEP3;
-UBYTE GTIA_SIZEM;
-UBYTE GTIA_GRAFP0;
-UBYTE GTIA_GRAFP1;
-UBYTE GTIA_GRAFP2;
-UBYTE GTIA_GRAFP3;
-UBYTE GTIA_GRAFM;
-UBYTE GTIA_COLPM0;
-UBYTE GTIA_COLPM1;
-UBYTE GTIA_COLPM2;
-UBYTE GTIA_COLPM3;
-UBYTE GTIA_COLPF0;
-UBYTE GTIA_COLPF1;
-UBYTE GTIA_COLPF2;
-UBYTE GTIA_COLPF3;
-UBYTE GTIA_COLBK;
-UBYTE GTIA_PRIOR;
-UBYTE GTIA_VDELAY;
-UBYTE GTIA_GRACTL;
+/* Transitional Option C bridge: the per-instance GTIA state lives in
+   GTIA_state_t (instance.h). Within gtia.c the legacy global names are
+   aliases into the file-scope context pointer `G`, which is pinned to the
+   default instance until callers pass an instance explicitly. */
+static GTIA_state_t *G;
+#undef GTIA_GRAFM
+#undef GTIA_GRAFP0
+#undef GTIA_GRAFP1
+#undef GTIA_GRAFP2
+#undef GTIA_GRAFP3
+#undef GTIA_HPOSP0
+#undef GTIA_HPOSP1
+#undef GTIA_HPOSP2
+#undef GTIA_HPOSP3
+#undef GTIA_HPOSM0
+#undef GTIA_HPOSM1
+#undef GTIA_HPOSM2
+#undef GTIA_HPOSM3
+#undef GTIA_SIZEP0
+#undef GTIA_SIZEP1
+#undef GTIA_SIZEP2
+#undef GTIA_SIZEP3
+#undef GTIA_SIZEM
+#undef GTIA_COLPM0
+#undef GTIA_COLPM1
+#undef GTIA_COLPM2
+#undef GTIA_COLPM3
+#undef GTIA_COLPF0
+#undef GTIA_COLPF1
+#undef GTIA_COLPF2
+#undef GTIA_COLPF3
+#undef GTIA_COLBK
+#undef GTIA_GRACTL
+#undef GTIA_M0PL
+#undef GTIA_M1PL
+#undef GTIA_M2PL
+#undef GTIA_M3PL
+#undef GTIA_P0PL
+#undef GTIA_P1PL
+#undef GTIA_P2PL
+#undef GTIA_P3PL
+#undef GTIA_PRIOR
+#undef GTIA_VDELAY
+#undef GTIA_pm_scanline
+#undef GTIA_pm_dirty
+#undef GTIA_collisions_mask_missile_playfield
+#undef GTIA_collisions_mask_player_playfield
+#undef GTIA_collisions_mask_missile_player
+#undef GTIA_collisions_mask_player_player
+#undef GTIA_TRIG
+#undef GTIA_TRIG_latch
+#undef GTIA_consol_override
+#undef GTIA_speaker
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *GI;
+#define GTIA_PIN_CTX(inst) ((void) (GI = (inst), G = &(inst)->gtia))
+#define GTIA_GRAFM  (G->GRAFM)
+#define GTIA_GRAFP0 (G->GRAFP0)
+#define GTIA_GRAFP1 (G->GRAFP1)
+#define GTIA_GRAFP2 (G->GRAFP2)
+#define GTIA_GRAFP3 (G->GRAFP3)
+#define GTIA_HPOSP0 (G->HPOSP0)
+#define GTIA_HPOSP1 (G->HPOSP1)
+#define GTIA_HPOSP2 (G->HPOSP2)
+#define GTIA_HPOSP3 (G->HPOSP3)
+#define GTIA_HPOSM0 (G->HPOSM0)
+#define GTIA_HPOSM1 (G->HPOSM1)
+#define GTIA_HPOSM2 (G->HPOSM2)
+#define GTIA_HPOSM3 (G->HPOSM3)
+#define GTIA_SIZEP0 (G->SIZEP0)
+#define GTIA_SIZEP1 (G->SIZEP1)
+#define GTIA_SIZEP2 (G->SIZEP2)
+#define GTIA_SIZEP3 (G->SIZEP3)
+#define GTIA_SIZEM  (G->SIZEM)
+#define GTIA_COLPM0 (G->COLPM0)
+#define GTIA_COLPM1 (G->COLPM1)
+#define GTIA_COLPM2 (G->COLPM2)
+#define GTIA_COLPM3 (G->COLPM3)
+#define GTIA_COLPF0 (G->COLPF0)
+#define GTIA_COLPF1 (G->COLPF1)
+#define GTIA_COLPF2 (G->COLPF2)
+#define GTIA_COLPF3 (G->COLPF3)
+#define GTIA_COLBK  (G->COLBK)
+#define GTIA_GRACTL (G->GRACTL)
+#define GTIA_M0PL   (G->M0PL)
+#define GTIA_M1PL   (G->M1PL)
+#define GTIA_M2PL   (G->M2PL)
+#define GTIA_M3PL   (G->M3PL)
+#define GTIA_P0PL   (G->P0PL)
+#define GTIA_P1PL   (G->P1PL)
+#define GTIA_P2PL   (G->P2PL)
+#define GTIA_P3PL   (G->P3PL)
+#define GTIA_PRIOR  (G->PRIOR)
+#define GTIA_VDELAY (G->VDELAY)
+#define GTIA_pm_scanline (G->pm_scanline)
+#define GTIA_pm_dirty    (G->pm_dirty)
+#define GTIA_TRIG        (G->TRIG)
+#define GTIA_TRIG_latch  (G->TRIG_latch)
+#define GTIA_consol_override (G->consol_override)
+#define GTIA_speaker         (G->speaker)
 
 /* Internal GTIA state ----------------------------------------------------- */
 
-int GTIA_speaker;
-int GTIA_consol_override = 0;
 static UBYTE consol;
 UBYTE consol_mask;
-UBYTE GTIA_TRIG[4];
-UBYTE GTIA_TRIG_latch[4];
 
 #if defined(BASIC) || defined(CURSES_BASIC)
 
@@ -105,10 +161,48 @@ void set_prior(UBYTE byte);			/* in antic.c */
 /* Player/Missile stuff ---------------------------------------------------- */
 
 /* change to 0x00 to disable collisions */
-UBYTE GTIA_collisions_mask_missile_playfield = 0x0f;
-UBYTE GTIA_collisions_mask_player_playfield = 0x0f;
-UBYTE GTIA_collisions_mask_missile_player = 0x0f;
-UBYTE GTIA_collisions_mask_player_player = 0x0f;
+#define GTIA_collisions_mask_missile_playfield (G->collisions_mask_missile_playfield)
+#define GTIA_collisions_mask_player_playfield  (G->collisions_mask_player_playfield)
+#define GTIA_collisions_mask_missile_player    (G->collisions_mask_missile_player)
+#define GTIA_collisions_mask_player_player     (G->collisions_mask_player_player)
+
+/* The gtia.h forwarding macros route legacy names to the default instance;
+   inside gtia.c they are redefined to route to the instance pinned by
+   GTIA_PIN_CTX() so the *_Ctx() bodies operate on their own instance. */
+#undef GTIA_Initialise
+#undef GTIA_Frame
+#undef GTIA_NewPmScanline
+#undef GTIA_StateSave
+#undef GTIA_StateRead
+#ifdef NEW_CYCLE_EXACT
+#undef GTIA_UpdatePmplColls
+#endif
+#define GTIA_Initialise(argc, argv) GTIA_Initialise_Ctx(GI, argc, argv)
+#define GTIA_Frame()                GTIA_Frame_Ctx(GI)
+#define GTIA_NewPmScanline()        GTIA_NewPmScanline_Ctx(GI)
+#define GTIA_StateSave()            GTIA_StateSave_Ctx(GI)
+#define GTIA_StateRead()            GTIA_StateRead_Ctx(GI)
+#ifdef NEW_CYCLE_EXACT
+#define GTIA_UpdatePmplColls()      GTIA_UpdatePmplColls_Ctx(GI)
+#endif
+
+/* Legacy entry points kept for the memory-map function-pointer tables and
+   not-yet-migrated callers; they pin the default instance. They must be
+   defined before the internal GTIA_GetByte/GTIA_PutByte macros below. */
+UBYTE GTIA_GetByte(UWORD addr, int no_side_effects)
+{
+	return GTIA_GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+void GTIA_PutByte(UWORD addr, UBYTE byte)
+{
+	GTIA_PutByte_Ctx(Atari800_default, addr, byte);
+}
+
+#undef GTIA_GetByte
+#undef GTIA_PutByte
+#define GTIA_GetByte(addr, no_side_effects) GTIA_GetByte_Ctx(GI, addr, no_side_effects)
+#define GTIA_PutByte(addr, byte)            GTIA_PutByte_Ctx(GI, addr, byte)
 
 #ifdef NEW_CYCLE_EXACT
 /* temporary collision registers for the current scanline only */
@@ -159,8 +253,6 @@ bit 6 - Missile 2
 bit 7 - Missile 3
 */
 
-UBYTE GTIA_pm_scanline[Screen_WIDTH / 2 + 8];	/* there's a byte for every *pair* of pixels */
-int GTIA_pm_dirty = TRUE;
 
 #define C_PM0	0x01
 #define C_PM1	0x02
@@ -221,8 +313,9 @@ static void setup_gtia9_11(void) {
 
 /* Initialization ---------------------------------------------------------- */
 
-int GTIA_Initialise(int *argc, char *argv[])
+int GTIA_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	GTIA_PIN_CTX(inst);
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	int i;
 	for (i = 0; i < 256; i++) {
@@ -261,10 +354,10 @@ int GTIA_Initialise(int *argc, char *argv[])
 static void generate_partial_pmpl_colls(int l, int r)
 {
 	int i;
-	if (r < 0 || l >= (int) sizeof(GTIA_pm_scanline) / (int) sizeof(GTIA_pm_scanline[0]))
+	if (r < 0 || l >= GTIA_PM_SCANLINE_SIZE)
 		return;
-	if (r >= (int) sizeof(GTIA_pm_scanline) / (int) sizeof(GTIA_pm_scanline[0])) {
-		r = (int) sizeof(GTIA_pm_scanline) / (int) sizeof(GTIA_pm_scanline[0]) - 1;
+	if (r >= GTIA_PM_SCANLINE_SIZE) {
+		r = GTIA_PM_SCANLINE_SIZE - 1;
 	}
 	if (l < 0)
 		l = 0;
@@ -298,11 +391,12 @@ static void update_partial_pmpl_colls(void)
 }
 
 /* update pm-> pl collisions at the end of a scanline */
-void GTIA_UpdatePmplColls(void)
+void GTIA_UpdatePmplColls_Ctx(Atari800_Instance *inst)
 {
+	GTIA_PIN_CTX(inst);
 	if (hitclr_pos != 0){
 		generate_partial_pmpl_colls(hitclr_pos,
-				sizeof(GTIA_pm_scanline) / sizeof(GTIA_pm_scanline[0]) - 1);
+				GTIA_PM_SCANLINE_SIZE - 1);
 /* If hitclr was written to, then only part of GTIA_pm_scanline should be used
  * for collisions */
 
@@ -331,8 +425,9 @@ void GTIA_UpdatePmplColls(void)
 
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 
-void GTIA_NewPmScanline(void)
+void GTIA_NewPmScanline_Ctx(Atari800_Instance *inst)
 {
+	GTIA_PIN_CTX(inst);
 #ifdef NEW_CYCLE_EXACT
 /* reset temporary pm->pl collisions */
 	P1PL_T = P2PL_T = P3PL_T = 0;
@@ -415,8 +510,9 @@ void GTIA_NewPmScanline(void)
 
 /* GTIA registers ---------------------------------------------------------- */
 
-void GTIA_Frame(void)
+void GTIA_Frame_Ctx(Atari800_Instance *inst)
 {
+	GTIA_PIN_CTX(inst);
 #ifdef BASIC
 	consol = 0xf;
 #else
@@ -431,8 +527,9 @@ void GTIA_Frame(void)
 	}
 }
 
-UBYTE GTIA_GetByte(UWORD addr, int no_side_effects)
+UBYTE GTIA_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
+	GTIA_PIN_CTX(inst);
 	switch (addr & 0x1f) {
 	case GTIA_OFFSET_M0PF:
 #ifdef NEW_CYCLE_EXACT
@@ -591,8 +688,9 @@ UBYTE GTIA_GetByte(UWORD addr, int no_side_effects)
 	return 0xf;
 }
 
-void GTIA_PutByte(UWORD addr, UBYTE byte)
+void GTIA_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	GTIA_PIN_CTX(inst);
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	UWORD cword;
 	UWORD cword2;
@@ -1199,8 +1297,9 @@ void GTIA_PutByte(UWORD addr, UBYTE byte)
 
 #ifndef BASIC
 
-void GTIA_StateSave(void)
+void GTIA_StateSave_Ctx(Atari800_Instance *inst)
 {
+	GTIA_PIN_CTX(inst);
 	int next_console_value = 7;
 
 	STATESAV_TAG(gtia);
@@ -1253,8 +1352,9 @@ void GTIA_StateSave(void)
 	StateSav_SaveUBYTE(GTIA_TRIG_latch, 4);
 }
 
-void GTIA_StateRead(UBYTE version)
+void GTIA_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 {
+	GTIA_PIN_CTX(inst);
 	int next_console_value;	/* ignored */
 
 	StateSav_ReadUBYTE(&GTIA_HPOSP0, 1);

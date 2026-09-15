@@ -3,6 +3,7 @@
 
 #include "atari.h"
 #include "screen.h"
+#include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 
 #define GTIA_OFFSET_HPOSP0 0x00
 #define GTIA_OFFSET_M0PF 0x00
@@ -58,44 +59,47 @@
 #define GTIA_OFFSET_HITCLR 0x1e
 #define GTIA_OFFSET_CONSOL 0x1f
 
-extern UBYTE GTIA_GRAFM;
-extern UBYTE GTIA_GRAFP0;
-extern UBYTE GTIA_GRAFP1;
-extern UBYTE GTIA_GRAFP2;
-extern UBYTE GTIA_GRAFP3;
-extern UBYTE GTIA_HPOSP0;
-extern UBYTE GTIA_HPOSP1;
-extern UBYTE GTIA_HPOSP2;
-extern UBYTE GTIA_HPOSP3;
-extern UBYTE GTIA_HPOSM0;
-extern UBYTE GTIA_HPOSM1;
-extern UBYTE GTIA_HPOSM2;
-extern UBYTE GTIA_HPOSM3;
-extern UBYTE GTIA_SIZEP0;
-extern UBYTE GTIA_SIZEP1;
-extern UBYTE GTIA_SIZEP2;
-extern UBYTE GTIA_SIZEP3;
-extern UBYTE GTIA_SIZEM;
-extern UBYTE GTIA_COLPM0;
-extern UBYTE GTIA_COLPM1;
-extern UBYTE GTIA_COLPM2;
-extern UBYTE GTIA_COLPM3;
-extern UBYTE GTIA_COLPF0;
-extern UBYTE GTIA_COLPF1;
-extern UBYTE GTIA_COLPF2;
-extern UBYTE GTIA_COLPF3;
-extern UBYTE GTIA_COLBK;
-extern UBYTE GTIA_GRACTL;
-extern UBYTE GTIA_M0PL;
-extern UBYTE GTIA_M1PL;
-extern UBYTE GTIA_M2PL;
-extern UBYTE GTIA_M3PL;
-extern UBYTE GTIA_P0PL;
-extern UBYTE GTIA_P1PL;
-extern UBYTE GTIA_P2PL;
-extern UBYTE GTIA_P3PL;
-extern UBYTE GTIA_PRIOR;
-extern UBYTE GTIA_VDELAY;
+/* Transitional Option C bridge: the per-instance GTIA state lives in
+   GTIA_state_t (instance.h). Until all callers pass an instance explicitly,
+   the legacy global names are aliased to the default instance. */
+#define GTIA_GRAFM  (Atari800_default->gtia.GRAFM)
+#define GTIA_GRAFP0 (Atari800_default->gtia.GRAFP0)
+#define GTIA_GRAFP1 (Atari800_default->gtia.GRAFP1)
+#define GTIA_GRAFP2 (Atari800_default->gtia.GRAFP2)
+#define GTIA_GRAFP3 (Atari800_default->gtia.GRAFP3)
+#define GTIA_HPOSP0 (Atari800_default->gtia.HPOSP0)
+#define GTIA_HPOSP1 (Atari800_default->gtia.HPOSP1)
+#define GTIA_HPOSP2 (Atari800_default->gtia.HPOSP2)
+#define GTIA_HPOSP3 (Atari800_default->gtia.HPOSP3)
+#define GTIA_HPOSM0 (Atari800_default->gtia.HPOSM0)
+#define GTIA_HPOSM1 (Atari800_default->gtia.HPOSM1)
+#define GTIA_HPOSM2 (Atari800_default->gtia.HPOSM2)
+#define GTIA_HPOSM3 (Atari800_default->gtia.HPOSM3)
+#define GTIA_SIZEP0 (Atari800_default->gtia.SIZEP0)
+#define GTIA_SIZEP1 (Atari800_default->gtia.SIZEP1)
+#define GTIA_SIZEP2 (Atari800_default->gtia.SIZEP2)
+#define GTIA_SIZEP3 (Atari800_default->gtia.SIZEP3)
+#define GTIA_SIZEM  (Atari800_default->gtia.SIZEM)
+#define GTIA_COLPM0 (Atari800_default->gtia.COLPM0)
+#define GTIA_COLPM1 (Atari800_default->gtia.COLPM1)
+#define GTIA_COLPM2 (Atari800_default->gtia.COLPM2)
+#define GTIA_COLPM3 (Atari800_default->gtia.COLPM3)
+#define GTIA_COLPF0 (Atari800_default->gtia.COLPF0)
+#define GTIA_COLPF1 (Atari800_default->gtia.COLPF1)
+#define GTIA_COLPF2 (Atari800_default->gtia.COLPF2)
+#define GTIA_COLPF3 (Atari800_default->gtia.COLPF3)
+#define GTIA_COLBK  (Atari800_default->gtia.COLBK)
+#define GTIA_GRACTL (Atari800_default->gtia.GRACTL)
+#define GTIA_M0PL   (Atari800_default->gtia.M0PL)
+#define GTIA_M1PL   (Atari800_default->gtia.M1PL)
+#define GTIA_M2PL   (Atari800_default->gtia.M2PL)
+#define GTIA_M3PL   (Atari800_default->gtia.M3PL)
+#define GTIA_P0PL   (Atari800_default->gtia.P0PL)
+#define GTIA_P1PL   (Atari800_default->gtia.P1PL)
+#define GTIA_P2PL   (Atari800_default->gtia.P2PL)
+#define GTIA_P3PL   (Atari800_default->gtia.P3PL)
+#define GTIA_PRIOR  (Atari800_default->gtia.PRIOR)
+#define GTIA_VDELAY (Atari800_default->gtia.VDELAY)
 
 #ifdef USE_COLOUR_TRANSLATION_TABLE
 
@@ -110,29 +114,48 @@ extern UWORD GTIA_colour_translation_table[256];
 
 #endif /* USE_COLOUR_TRANSLATION_TABLE */
 
-extern UBYTE GTIA_pm_scanline[Screen_WIDTH / 2 + 8];	/* there's a byte for every *pair* of pixels */
-extern int GTIA_pm_dirty;
+#define GTIA_PM_SCANLINE_SIZE (Screen_WIDTH / 2 + 8)
+#define GTIA_pm_scanline (Atari800_default->gtia.pm_scanline)	/* there's a byte for every *pair* of pixels */
+#define GTIA_pm_dirty    (Atari800_default->gtia.pm_dirty)
 
-extern UBYTE GTIA_collisions_mask_missile_playfield;
-extern UBYTE GTIA_collisions_mask_player_playfield;
-extern UBYTE GTIA_collisions_mask_missile_player;
-extern UBYTE GTIA_collisions_mask_player_player;
+#define GTIA_collisions_mask_missile_playfield (Atari800_default->gtia.collisions_mask_missile_playfield)
+#define GTIA_collisions_mask_player_playfield  (Atari800_default->gtia.collisions_mask_player_playfield)
+#define GTIA_collisions_mask_missile_player    (Atari800_default->gtia.collisions_mask_missile_player)
+#define GTIA_collisions_mask_player_player     (Atari800_default->gtia.collisions_mask_player_player)
 
-extern UBYTE GTIA_TRIG[4];
-extern UBYTE GTIA_TRIG_latch[4];
+#define GTIA_TRIG        (Atari800_default->gtia.TRIG)
+#define GTIA_TRIG_latch  (Atari800_default->gtia.TRIG_latch)
 
-extern int GTIA_consol_override;
-extern int GTIA_speaker;
+#define GTIA_consol_override (Atari800_default->gtia.consol_override)
+#define GTIA_speaker         (Atari800_default->gtia.speaker)
 
-int GTIA_Initialise(int *argc, char *argv[]);
-void GTIA_Frame(void);
-void GTIA_NewPmScanline(void);
-UBYTE GTIA_GetByte(UWORD addr, int no_side_effects);
-void GTIA_PutByte(UWORD addr, UBYTE byte);
-void GTIA_StateSave(void);
-void GTIA_StateRead(UBYTE version);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. GTIA_GetByte/GTIA_PutByte remain real functions
+   (registered in the per-instance MEMORY_readmap/MEMORY_writemap
+   function-pointer tables, which have a fixed context-free signature) and
+   pin the default instance. */
+int GTIA_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+void GTIA_Frame_Ctx(Atari800_Instance *inst);
+void GTIA_NewPmScanline_Ctx(Atari800_Instance *inst);
+UBYTE GTIA_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+void GTIA_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte);
+void GTIA_StateSave_Ctx(Atari800_Instance *inst);
+void GTIA_StateRead_Ctx(Atari800_Instance *inst, UBYTE version);
 
 #ifdef NEW_CYCLE_EXACT
-void GTIA_UpdatePmplColls(void);
+void GTIA_UpdatePmplColls_Ctx(Atari800_Instance *inst);
+#endif
+
+#define GTIA_Initialise(argc, argv) GTIA_Initialise_Ctx(Atari800_default, argc, argv)
+#define GTIA_Frame()                GTIA_Frame_Ctx(Atari800_default)
+#define GTIA_NewPmScanline()        GTIA_NewPmScanline_Ctx(Atari800_default)
+#define GTIA_StateSave()            GTIA_StateSave_Ctx(Atari800_default)
+#define GTIA_StateRead(version)     GTIA_StateRead_Ctx(Atari800_default, version)
+
+UBYTE GTIA_GetByte(UWORD addr, int no_side_effects);
+void GTIA_PutByte(UWORD addr, UBYTE byte);
+#ifdef NEW_CYCLE_EXACT
+#define GTIA_UpdatePmplColls()      GTIA_UpdatePmplColls_Ctx(Atari800_default)
 #endif
 #endif /* GTIA_H_ */

@@ -127,21 +127,31 @@ refactor. It is the working companion to
 
 ## Phase 2 — Chip modules
 
-> **Status: in progress.** ANTIC state migration done (2026-09-15); function
-> signature conversion not started.
+> **Status: in progress.** ANTIC state migration done (2026-09-15); ANTIC
+> function signature conversion done (2026-09-15). GTIA/POKEY/PIA signature
+> conversion not started.
 
 ### 2.1 ANTIC — [`src/antic.h`](src/antic.h), [`src/antic.c`](src/antic.c)
 
-- [ ] Convert: `ANTIC_Initialise`, `ANTIC_Reset`, `ANTIC_Frame`,
+- [x] Convert: `ANTIC_Initialise`, `ANTIC_Reset`, `ANTIC_Frame`,
       `ANTIC_GetByte`, `ANTIC_PutByte`, `ANTIC_GetDLByte`, `ANTIC_GetDLWord`,
       `ANTIC_UpdateArtifacting`, `ANTIC_VideoMemset`, `ANTIC_VideoPutByte`,
       `ANTIC_SetPrior`, `ANTIC_StateSave`, `ANTIC_StateRead`,
       `ANTIC_UpdateScanline`, `ANTIC_UpdateScanlinePrior`.
-      Note: `ANTIC_GetByte`/`ANTIC_PutByte` are registered in the per-instance
-      `MEMORY_readmap`/`MEMORY_writemap` function-pointer tables, which have a
-      fixed context-free signature — they must keep the legacy signature and pin
-      the module context (like `MEMORY_HwGetByte`), or the map entries must
-      become per-instance thunks.
+      Done 2026-09-15: each public function is now
+      `ANTIC_*_Ctx(Atari800_Instance *inst, ...)` in `antic.c`, which pins the
+      file-scope context (`A = &inst->antic`, `AI = inst`) via
+      `ANTIC_PIN_CTX(inst)`; all legacy state aliases inside `antic.c` route
+      through `A` and internal calls route through `AI`, so the `_Ctx` bodies
+      operate on their own instance. In `antic.h` the legacy names are
+      forwarding macros that pass `Atari800_default`, so not-yet-migrated
+      callers are unchanged. `ANTIC_GetByte`/`ANTIC_PutByte` remain real
+      functions (registered in the per-instance `MEMORY_readmap`/
+      `MEMORY_writemap` function-pointer tables, which have a fixed
+      context-free signature) that pin the default instance and forward to the
+      `_Ctx` versions — they will become per-instance thunks when the memory
+      map tables are converted. Build passes; smoke run (8 s, `pete.atr` boot)
+      clean — the previously observed intermittent CIM did not reappear.
 - [x] Move state: registers (`ANTIC_CHACTL`, `ANTIC_CHBASE`, `ANTIC_dlist`,
       `ANTIC_DMACTL`, `ANTIC_HSCROL`, `ANTIC_NMIEN`, `ANTIC_NMIST`,
       `ANTIC_PMBASE`, `ANTIC_VSCROL`), timing (`ANTIC_break_ypos`, `ANTIC_ypos`,
@@ -174,36 +184,63 @@ refactor. It is the working companion to
 - [ ] Convert: `GTIA_Initialise`, `GTIA_Frame`, `GTIA_NewPmScanline`,
       `GTIA_GetByte`, `GTIA_PutByte`, `GTIA_StateSave`, `GTIA_StateRead`,
       `GTIA_UpdatePmplColls`.
-- [ ] Move state: all colour/position/graphics registers (`GTIA_GRAFP0..3`,
+      Note: `GTIA_GetByte`/`GTIA_PutByte` are registered in the memory map
+      tables (fixed context-free signature) — same thunk consideration as
+      ANTIC.
+- [x] Move state: all colour/position/graphics registers (`GTIA_GRAFP0..3`,
       `GTIA_HPOSP0..3`, `GTIA_HPOSM0..3`, `GTIA_SIZEP0..3`, `GTIA_SIZEM`,
       `GTIA_COLPM0..3`, `GTIA_COLPF0..3`, `GTIA_COLBK`, `GTIA_GRACTL`,
       `GTIA_PRIOR`, `GTIA_VDELAY`), collision registers (`GTIA_M0PL..M3PL`,
       `GTIA_P0PL..P3PL`), `GTIA_pm_scanline[]`, `GTIA_pm_dirty`,
       `GTIA_collisions_mask_*`, `GTIA_TRIG[4]`, `GTIA_TRIG_latch[4]`,
       `GTIA_consol_override`, `GTIA_speaker`.
-- [ ] Keep shared: `GTIA_colour_translation_table[256]` *(shared, read-only)*.
+      Done 2026-09-15: all moved into `GTIA_state_t`
+      ([`src/instance.h`](src/instance.h)); `gtia.c` and `gtia.h` alias the
+      legacy names to `Atari800_default->gtia.*`. Default-instance init values
+      preserved in `atari.c` (`pm_dirty = TRUE`, collision masks `0x0f`).
+      `sizeof(GTIA_pm_scanline)` uses replaced with new
+      `GTIA_PM_SCANLINE_SIZE` macro. Remaining file-scope statics (`consol`,
+      `consol_mask`, `hposp_ptr`, `grafp_lookup`, NEW_CYCLE_EXACT temporary
+      collision registers `P1PL_T` etc.) to be moved in a follow-up pass.
+- [x] Keep shared: `GTIA_colour_translation_table[256]` *(shared, read-only)* —
+      still a file-scope global in `gtia.c` (USE_COLOUR_TRANSLATION_TABLE).
 
 ### 2.3 POKEY — [`src/pokey.h`](src/pokey.h), [`src/pokey.c`](src/pokey.c)
 
 - [ ] Convert: `POKEY_Initialise`, `POKEY_Frame`, `POKEY_Scanline`,
       `POKEY_GetByte`, `POKEY_PutByte`, `POKEY_StateSave`, `POKEY_StateRead`,
       `POKEY_GetRandomCounter`, `POKEY_SetRandomCounter`.
-- [ ] Move state: `POKEY_KBCODE`, `POKEY_IRQST`, `POKEY_IRQEN`, `POKEY_SKSTAT`,
+      Note: `POKEY_GetByte`/`POKEY_PutByte` are registered in the memory map
+      tables (fixed context-free signature) — same thunk consideration as
+      ANTIC/GTIA.
+- [x] Move state: `POKEY_KBCODE`, `POKEY_IRQST`, `POKEY_IRQEN`, `POKEY_SKSTAT`,
       `POKEY_SKCTL`, `POKEY_DELAYED_SERIN_IRQ`, `POKEY_DELAYED_SEROUT_IRQ`,
       `POKEY_DELAYED_XMTDONE_IRQ`, `POKEY_irq_at_xpos`, `POKEY_irq_pending_mask`,
       `POKEY_POT_input[8]`, `POKEY_AUDF[]`, `POKEY_AUDC[]`, `POKEY_AUDCTL[]`,
       `POKEY_DivNIRQ[]`, `POKEY_DivNMax[]`, `POKEY_Base_mult[]`.
-- [ ] Keep shared: `POKEY_poly9_lookup[]`, `POKEY_poly17_lookup[]`
-      *(shared, read-only)*.
+      Done 2026-09-15: all moved into `POKEY_state_t`
+      ([`src/instance.h`](src/instance.h)); `pokey.c` and `pokey.h` alias the
+      legacy names to `Atari800_default->pokey.*`. Default-instance init
+      preserved in `atari.c` (`POT_input` = 228 × 8). Remaining file-scope
+      state in `pokey.c` (`POKEY_SERIN`, `irq_15khz_phase`, `pot_scanline`,
+      timer/divisor internals) to be moved in a follow-up pass.
+- [x] Keep shared: `POKEY_poly9_lookup[]`, `POKEY_poly17_lookup[]`
+      *(shared, read-only)* — still file-scope globals in `pokey.c`.
 
 ### 2.4 PIA — [`src/pia.h`](src/pia.h), [`src/pia.c`](src/pia.c)
 
 - [ ] Convert: `PIA_Initialise`, `PIA_Reset`, `PIA_GetByte`, `PIA_PutByte`,
       `PIA_StateSave`, `PIA_StateRead`, `PIA_SetCA1`, `PIA_SetCB1`,
       `update_PIA_IRQ`.
-- [ ] Move state: `PIA_PACTL`, `PIA_PBCTL`, `PIA_PORTA`, `PIA_PORTB`,
+- [x] Move state: `PIA_PACTL`, `PIA_PBCTL`, `PIA_PORTA`, `PIA_PORTB`,
       `PIA_PORTA_mask`, `PIA_PORTB_mask`, `PIA_PORT_input[2]`, `PIA_CA1`,
       `PIA_CB1`, `PIA_CA2`, `PIA_CB2`, `PIA_IRQ`.
+      Done 2026-09-15: all moved into `PIA_state_t`
+      ([`src/instance.h`](src/instance.h)); `pia.c` and `pia.h` alias the
+      legacy names to `Atari800_default->pia.*`. Default-instance init
+      preserved in `atari.c` (`CA1/CA2/CB1/CB2 = 1`). The internal
+      `*_negpending`/`*_pospending` edge-detect flags were made `static` in
+      `pia.c` (not yet in `PIA_state_t`; follow-up pass).
 
 ---
 
@@ -216,10 +253,24 @@ refactor. It is the working companion to
       `SIO_GetByte`, `SIO_Initialise`, `SIO_Exit`, `SIO_ReadStatusBlock`,
       `SIO_FormatDisk`, `SIO_SizeOfSector`, `SIO_ReadSector`, `SIO_DriveStatus`,
       `SIO_WriteStatusBlock`, `SIO_WriteSector`, `SIO_StateSave`, `SIO_StateRead`.
-- [ ] Move state: `SIO_status[256]`, `SIO_drive_status[8]`,
+- [x] Move state: `SIO_status[256]`, `SIO_drive_status[8]`,
       `SIO_filename[8][FILENAME_MAX]`, `SIO_last_op`, `SIO_last_op_time`,
       `SIO_last_drive`, `SIO_last_sector`, `SIO_format_sectorcount[8]`,
       `SIO_format_sectorsize[8]`, and per-drive file handles/buffers.
+      Done 2026-09-15: `SIO_state_t` is now defined concretely in
+      [`src/instance.h`](src/instance.h) (moved the `SIO_MAX_DRIVES` define and
+      `SIO_UnitStatus` enum there; `sio.h` includes `instance.h`) and is
+      **embedded by value** in `Atari800_Instance` (`.sio`), so the default
+      instance's state is valid before any allocation. All public state plus the
+      per-drive internals (`boot_sectors_type`, `image_type`, `disk` FILE*s,
+      `sectorcount`, `sectorsize`, `io_success`, `additional_info`) and the
+      serial-frame state (`CommandFrame`, `CommandIndex`, `DataBuffer`,
+      `DataIndex`, `TransferStatus`, `ExpectedBytes`, `delay_counter`,
+      `last_ypos`) moved in; `sio.c`/`sio.h` alias the legacy names to
+      `Atari800_default->sio.*`. `ui.c`'s `DiskManagement()` menu array made
+      non-static (it was initialised from `SIO_filename` at static-init time).
+      Remaining file-scope: `sio_tmpbuf` scratch buffers (per-call transient),
+      `ignore_header_writeprotect` (config-ish).
 
 ### 3.2 Devices (H:/P:/R:/B: patches) — [`src/devices.h`](src/devices.h), [`src/devices.c`](src/devices.c)
 
@@ -227,11 +278,25 @@ refactor. It is the working companion to
       `Devices_Frame`, `Devices_UpdatePatches`, `Devices_SkipDeviceName`,
       `Devices_H_CountOpen`, `Devices_H_CloseAll`, `Devices_SetPrintCommand`,
       `Devices_UpdateHATABSEntry`, `Devices_RemoveHATABSEntry`.
-- [ ] Move state: `Devices_enable_h_patch`, `Devices_enable_p_patch`,
+- [x] Move state: `Devices_enable_h_patch`, `Devices_enable_p_patch`,
       `Devices_enable_r_patch`, `Devices_enable_b_patch`,
       `Devices_atari_h_dir[4][FILENAME_MAX]`, `Devices_h_read_only`,
       `Devices_h_exe_path`, `Devices_h_device_name`,
       `Devices_h_current_dir[4][]`, `Devices_print_command[256]`, `dev_b_status`.
+      Done 2026-09-15: `Devices_state_t` defined concretely in
+      [`src/instance.h`](src/instance.h) (including `struct DEV_B`, moved there
+      from `devices.h`) and **embedded by value** in `Atari800_Instance`
+      (`.devices`). The H:-device internals (`h_fp[8]`, `h_textmode`,
+      `h_lastbyte`, `h_wascr`, `h_lastop`, `h_iocb`, `h_devnum`,
+      `atari_filename`, `new_filename`, `atari_path`, `host_path`) moved too;
+      `devices.c`/`devices.h` alias the legacy names to
+      `Atari800_default->devices.*`. Default-instance init preserved in
+      `atari.c` (`enable_h/p_patch = TRUE`, `h_read_only = TRUE`,
+      `h_exe_path = "H1:>DOS;>DOS"`, `h_device_name = 'H'`,
+      `print_command = "lpr %s"`). `ui.c`'s `HDeviceStatus()` and `Settings()`
+      menu arrays made non-static (static-init from Devices state). Remaining
+      file-scope: `devbug` (debug flag), `h_tmpbuf` scratch, platform
+      directory-enumeration statics (`dir_path`, `dp`, ...).
 
 ### 3.3 Cartridge — [`src/cartridge.h`](src/cartridge.h), [`src/cartridge.c`](src/cartridge.c)
 
@@ -241,8 +306,23 @@ refactor. It is the working companion to
       `CARTRIDGE_Remove_Second`, `CARTRIDGE_ColdStart`, `CARTRIDGE_GetByte`,
       `CARTRIDGE_PutByte`, `CARTRIDGE_StateSave`, `CARTRIDGE_StateRead`,
       `CARTRIDGE_BountyBob1GetByte`.
-- [ ] Move state: `CARTRIDGE_main`, `CARTRIDGE_piggyback` (including the
+      Note: `CARTRIDGE_GetByte`/`CARTRIDGE_PutByte` (and the BountyBob/5200
+      SuperCart handlers) are registered in the memory map tables — same thunk
+      consideration as ANTIC/GTIA/POKEY.
+- [x] Move state: `CARTRIDGE_main`, `CARTRIDGE_piggyback` (including the
       `image` buffers), `CARTRIDGE_autoreboot`.
+      Done 2026-09-15: `CARTRIDGE_image_t` typedef moved from `cartridge.h`
+      into [`src/instance.h`](src/instance.h); `Cartridge_state_t` (main,
+      piggyback, autoreboot, and the internal `active_cart` pointer) is
+      **embedded by value** in `Atari800_Instance` (`.cartridge`);
+      `cartridge.c`/`cartridge.h` alias the legacy names to
+      `Atari800_default->cartridge.*`. `active_cart` is lazily pinned to
+      `&...main` via `CARTRIDGE_PIN_CTX()` at the entry points that can reach
+      it (UpdateState, Get/PutByte, BountyBob/5200 handlers, ColdStart,
+      Initialise, StateSave/Read) because the default instance is
+      zero-initialised. Defaults (`autoreboot = TRUE`, both carts
+      `CARTRIDGE_NONE`) match the old static initialisers via zero-init plus
+      the `atari.c` initializer.
 
 ### 3.4 Cassette — [`src/cassette.h`](src/cassette.h), [`src/cassette.c`](src/cassette.c)
 
@@ -253,10 +333,21 @@ refactor. It is the working companion to
       `CASSETTE_AddScanLine`, `CASSETTE_ResetPOKEY`, `CASSETTE_GetSize`,
       `CASSETTE_GetPosition`, `CASSETTE_AddGap`, `CASSETTE_ReadToMemory`,
       `CASSETTE_WriteFromMemory`, `CASSETTE_LeaderLoad`, `CASSETTE_LeaderSave`.
-- [ ] Move state: `CASSETTE_filename`, `CASSETTE_description`, `CASSETTE_status`,
+- [x] Move state: `CASSETTE_filename`, `CASSETTE_description`, `CASSETTE_status`,
       `CASSETTE_hold_start`, `CASSETTE_hold_start_on_reboot`,
       `CASSETTE_press_space`, `CASSETTE_write_protect`, `CASSETTE_record`,
       `CASSETTE_readable`, `CASSETTE_writable`, and tape position/file state.
+      Done 2026-09-15: `CASSETTE_status_t` enum moved from `cassette.h` into
+      [`src/instance.h`](src/instance.h) (the `IMG_TAPE_t` forward typedef is
+      now guarded by `IMG_TAPE_T_DEFINED` in both `instance.h` and
+      `img_tape.h` to avoid a pedantic redefinition); `Cassette_state_t`
+      (public state plus internals `cassette_file`, `event_time_left`,
+      `pending_serin`, `passing_gap`, `pending_serin_byte`, `serin_byte`,
+      `cassette_gapdelay`, `cassette_motor`, `eof_of_tape`) is **embedded by
+      value** in `Atari800_Instance` (`.cassette`); `cassette.c`/`cassette.h`
+      alias the legacy names to `Atari800_default->cassette.*`. `ui.c`'s
+      `TapeManagement()` menu array made non-static (static-init from
+      `CASSETTE_description`).
 
 ### 3.5 PBI — [`src/pbi.h`](src/pbi.h), [`src/pbi.c`](src/pbi.c)
 

@@ -75,28 +75,53 @@
 #define ANTIC_PENH_input (Atari800_default->antic.PENH_input)
 #define ANTIC_PENV_input (Atari800_default->antic.PENV_input)
 
-int ANTIC_Initialise(int *argc, char *argv[]);
-void ANTIC_Reset(void);
-void ANTIC_Frame(int draw_display);
-UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects);
-void ANTIC_PutByte(UWORD addr, UBYTE byte);
+/* Option C context-aware entry points. */
+int ANTIC_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+void ANTIC_Reset_Ctx(Atari800_Instance *inst);
+void ANTIC_Frame_Ctx(Atari800_Instance *inst, int draw_display);
+UBYTE ANTIC_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+void ANTIC_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte);
 
-UBYTE ANTIC_GetDLByte(UWORD *paddr);
-UWORD ANTIC_GetDLWord(UWORD *paddr);
+UBYTE ANTIC_GetDLByte_Ctx(Atari800_Instance *inst, UWORD *paddr);
+UWORD ANTIC_GetDLWord_Ctx(Atari800_Instance *inst, UWORD *paddr);
 
 /* always call ANTIC_UpdateArtifacting after changing ANTIC_artif_mode */
-void ANTIC_UpdateArtifacting(void);
+void ANTIC_UpdateArtifacting_Ctx(Atari800_Instance *inst);
 
 /* Video memory access */
-void ANTIC_VideoMemset(UBYTE *ptr, UBYTE val, ULONG size);
-void ANTIC_VideoPutByte(UBYTE *ptr, UBYTE val);
+void ANTIC_VideoMemset_Ctx(Atari800_Instance *inst, UBYTE *ptr, UBYTE val, ULONG size);
+void ANTIC_VideoPutByte_Ctx(Atari800_Instance *inst, UBYTE *ptr, UBYTE val);
 
 /* GTIA calls it on a write to PRIOR */
-void ANTIC_SetPrior(UBYTE prior);
+void ANTIC_SetPrior_Ctx(Atari800_Instance *inst, UBYTE prior);
 
 /* Saved states */
-void ANTIC_StateSave(void);
-void ANTIC_StateRead(void);
+void ANTIC_StateSave_Ctx(Atari800_Instance *inst);
+void ANTIC_StateRead_Ctx(Atari800_Instance *inst);
+
+void ANTIC_UpdateScanline_Ctx(Atari800_Instance *inst);
+void ANTIC_UpdateScanlinePrior_Ctx(Atari800_Instance *inst, UBYTE byte);
+#define ANTIC_UpdateScanline()          ANTIC_UpdateScanline_Ctx(Atari800_default)
+#define ANTIC_UpdateScanlinePrior(byte) ANTIC_UpdateScanlinePrior_Ctx(Atari800_default, byte)
+
+/* Transitional forwarding macros: not-yet-migrated callers use the default
+   instance. ANTIC_GetByte/ANTIC_PutByte remain real functions (they are
+   registered in the per-instance memory map function-pointer tables, which
+   have a fixed context-free signature) and pin the default instance. */
+#define ANTIC_Initialise(argc, argv)      ANTIC_Initialise_Ctx(Atari800_default, argc, argv)
+#define ANTIC_Reset()                     ANTIC_Reset_Ctx(Atari800_default)
+#define ANTIC_Frame(draw_display)         ANTIC_Frame_Ctx(Atari800_default, draw_display)
+#define ANTIC_GetDLByte(paddr)            ANTIC_GetDLByte_Ctx(Atari800_default, paddr)
+#define ANTIC_GetDLWord(paddr)            ANTIC_GetDLWord_Ctx(Atari800_default, paddr)
+#define ANTIC_UpdateArtifacting()         ANTIC_UpdateArtifacting_Ctx(Atari800_default)
+#define ANTIC_VideoMemset(ptr, val, size) ANTIC_VideoMemset_Ctx(Atari800_default, ptr, val, size)
+#define ANTIC_VideoPutByte(ptr, val)      ANTIC_VideoPutByte_Ctx(Atari800_default, ptr, val)
+#define ANTIC_SetPrior(prior)             ANTIC_SetPrior_Ctx(Atari800_default, prior)
+#define ANTIC_StateSave()                 ANTIC_StateSave_Ctx(Atari800_default)
+#define ANTIC_StateRead()                 ANTIC_StateRead_Ctx(Atari800_default)
+
+UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects);
+void ANTIC_PutByte(UWORD addr, UBYTE byte);
 
 /* Pointer to 16 KB seen by ANTIC in 0x4000-0x7fff.
    If it's the same what the CPU sees (and what's in memory[0x4000..0x7fff],
@@ -124,8 +149,6 @@ extern UWORD ANTIC_hires_lookup_l[128];
 #define ANTIC_cur_screen_pos (Atari800_default->antic.cur_screen_pos)
 extern const int *ANTIC_cpu2antic_ptr;
 extern const int *ANTIC_antic2cpu_ptr;
-void ANTIC_UpdateScanline(void);
-void ANTIC_UpdateScanlinePrior(UBYTE byte);
 
 #define ANTIC_XPOS ( ANTIC_DRAWING_SCREEN ? ANTIC_cpu2antic_ptr[ANTIC_xpos] : ANTIC_xpos )
 #else

@@ -26,7 +26,10 @@
 
 #include "atari.h"
 
+#ifndef IMG_TAPE_T_DEFINED
+#define IMG_TAPE_T_DEFINED
 typedef struct IMG_TAPE_t IMG_TAPE_t;
+#endif
 
 /* Checks if a file is a valid tape image, based on its first four bytes
    stored in HEADER. */

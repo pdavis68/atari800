@@ -67,9 +67,42 @@
 #define BOOT_SECTORS_LOGICAL	0
 #define BOOT_SECTORS_PHYSICAL	1
 #define BOOT_SECTORS_SIO2PC		2
-static int boot_sectors_type[SIO_MAX_DRIVES];
-
-static int image_type[SIO_MAX_DRIVES];
+/* Transitional Option C bridge: the per-instance SIO state lives in
+   SIO_state_t (instance.h). Within sio.c the legacy global/static names are
+   aliases into the default instance (via Atari800_default->sio.*). */
+#undef SIO_status
+#undef SIO_drive_status
+#undef SIO_filename
+#undef SIO_last_op
+#undef SIO_last_op_time
+#undef SIO_last_drive
+#undef SIO_last_sector
+#undef SIO_format_sectorcount
+#undef SIO_format_sectorsize
+#define SIO_status      (Atari800_default->sio.status)
+#define SIO_drive_status (Atari800_default->sio.drive_status)
+#define SIO_filename    (Atari800_default->sio.filename)
+#define SIO_last_op      (Atari800_default->sio.last_op)
+#define SIO_last_op_time (Atari800_default->sio.last_op_time)
+#define SIO_last_drive   (Atari800_default->sio.last_drive)
+#define SIO_last_sector  (Atari800_default->sio.last_sector)
+#define SIO_format_sectorcount (Atari800_default->sio.format_sectorcount)
+#define SIO_format_sectorsize  (Atari800_default->sio.format_sectorsize)
+#define boot_sectors_type (Atari800_default->sio.boot_sectors_type)
+#define image_type        (Atari800_default->sio.image_type)
+#define disk              (Atari800_default->sio.disk)
+#define sectorcount       (Atari800_default->sio.sectorcount)
+#define sectorsize        (Atari800_default->sio.sectorsize)
+#define io_success        (Atari800_default->sio.io_success)
+#define additional_info   (Atari800_default->sio.additional_info)
+#define CommandFrame      (Atari800_default->sio.CommandFrame)
+#define CommandIndex      (Atari800_default->sio.CommandIndex)
+#define DataBuffer        (Atari800_default->sio.DataBuffer)
+#define DataIndex         (Atari800_default->sio.DataIndex)
+#define TransferStatus    (Atari800_default->sio.TransferStatus)
+#define ExpectedBytes     (Atari800_default->sio.ExpectedBytes)
+#define delay_counter     (Atari800_default->sio.delay_counter)
+#define last_ypos         (Atari800_default->sio.last_ypos)
 #define IMAGE_TYPE_XFD  0
 #define IMAGE_TYPE_ATR  1
 #define IMAGE_TYPE_PRO  2
@@ -79,13 +112,6 @@ static int image_type[SIO_MAX_DRIVES];
 extern void (*disk_activity_callback)(int drive, int operation);
 #endif
 
-static FILE *disk[SIO_MAX_DRIVES] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
-static int sectorcount[SIO_MAX_DRIVES];
-static int sectorsize[SIO_MAX_DRIVES];
-/* these two are used by the 1450XLD parallel disk device */
-int SIO_format_sectorcount[SIO_MAX_DRIVES];
-int SIO_format_sectorsize[SIO_MAX_DRIVES];
-static int io_success[SIO_MAX_DRIVES];
 /* stores dup sector counter for PRO images */
 typedef struct tagpro_additional_info_t {
 	int max_sector;
@@ -155,19 +181,7 @@ typedef struct tagvapi_sector_header_t {
 #define VAPI_32(x) (x[0] + (x[1] << 8) + (x[2] << 16) + (x[3] << 24))
 #define VAPI_16(x) (x[0] + (x[1] << 8))
 
-/* Additional Info for all copy protected disk types */
-static void *additional_info[SIO_MAX_DRIVES];
-
-SIO_UnitStatus SIO_drive_status[SIO_MAX_DRIVES];
-char SIO_filename[SIO_MAX_DRIVES][FILENAME_MAX];
-
 Util_tmpbufdef(static, sio_tmpbuf[SIO_MAX_DRIVES])
-
-int SIO_last_op;
-int SIO_last_op_time = 0;
-int SIO_last_drive;
-int SIO_last_sector;
-char SIO_status[256];
 
 /* Serial I/O emulation support */
 #define SIO_NoFrame         (0x00)
@@ -177,12 +191,6 @@ char SIO_status[256];
 #define SIO_WriteFrame      (0x04)
 #define SIO_FinalStatus     (0x05)
 #define SIO_FormatFrame     (0x06)
-static UBYTE CommandFrame[6];
-static int CommandIndex = 0;
-static UBYTE DataBuffer[65535 + 3]; /* large buffer for FujiNet */
-static int DataIndex = 0;
-static int TransferStatus = SIO_NoFrame;
-static int ExpectedBytes = 0;
 #ifdef NETSIO
 int NetSIO_GetByte(void);
 #endif
@@ -1106,8 +1114,6 @@ int SIO_DriveStatus(int unit, UBYTE *buffer)
    faster than with a typical disk drive.  We introduce a delay
    of SECTOR_DELAY scanlines between successive reads of sector 1. */
 #define SECTOR_DELAY 3200
-static int delay_counter = 0;
-static int last_ypos = 0;
 #endif
 
 /* SIO patch emulation routine */

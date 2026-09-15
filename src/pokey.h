@@ -42,30 +42,52 @@
 
 #ifndef ASAP
 
-extern UBYTE POKEY_KBCODE;
-extern UBYTE POKEY_IRQST;
-extern UBYTE POKEY_IRQEN;
-extern UBYTE POKEY_SKSTAT;
-extern UBYTE POKEY_SKCTL;
-extern int POKEY_DELAYED_SERIN_IRQ;
-extern int POKEY_DELAYED_SEROUT_IRQ;
-extern int POKEY_DELAYED_XMTDONE_IRQ;
+#include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
+
+/* Transitional Option C bridge: the per-instance POKEY state lives in
+   POKEY_state_t (instance.h). Until all callers pass an instance explicitly,
+   the legacy global names are aliased to the default instance. */
+#define POKEY_KBCODE           (Atari800_default->pokey.KBCODE)
+#define POKEY_IRQST            (Atari800_default->pokey.IRQST)
+#define POKEY_IRQEN            (Atari800_default->pokey.IRQEN)
+#define POKEY_SKSTAT           (Atari800_default->pokey.SKSTAT)
+#define POKEY_SKCTL            (Atari800_default->pokey.SKCTL)
+#define POKEY_DELAYED_SERIN_IRQ  (Atari800_default->pokey.DELAYED_SERIN_IRQ)
+#define POKEY_DELAYED_SEROUT_IRQ (Atari800_default->pokey.DELAYED_SEROUT_IRQ)
+#define POKEY_DELAYED_XMTDONE_IRQ (Atari800_default->pokey.DELAYED_XMTDONE_IRQ)
 #ifdef NEW_CYCLE_EXACT
-extern int POKEY_irq_at_xpos;
-extern UBYTE POKEY_irq_pending_mask;
+#define POKEY_irq_at_xpos      (Atari800_default->pokey.irq_at_xpos)
+#define POKEY_irq_pending_mask (Atari800_default->pokey.irq_pending_mask)
 #endif
 
-extern UBYTE POKEY_POT_input[8];
+#define POKEY_POT_input        (Atari800_default->pokey.POT_input)
 
-ULONG POKEY_GetRandomCounter(void);
-void POKEY_SetRandomCounter(ULONG value);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. POKEY_GetByte/POKEY_PutByte remain real functions
+   (registered in the per-instance MEMORY_readmap/MEMORY_writemap
+   function-pointer tables, which have a fixed context-free signature) and
+   pin the default instance. */
+ULONG POKEY_GetRandomCounter_Ctx(Atari800_Instance *inst);
+void POKEY_SetRandomCounter_Ctx(Atari800_Instance *inst, ULONG value);
+UBYTE POKEY_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+void POKEY_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte);
+int POKEY_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+void POKEY_Frame_Ctx(Atari800_Instance *inst);
+void POKEY_Scanline_Ctx(Atari800_Instance *inst);
+void POKEY_StateSave_Ctx(Atari800_Instance *inst);
+void POKEY_StateRead_Ctx(Atari800_Instance *inst);
+
+#define POKEY_GetRandomCounter()  POKEY_GetRandomCounter_Ctx(Atari800_default)
+#define POKEY_SetRandomCounter(v) POKEY_SetRandomCounter_Ctx(Atari800_default, v)
+#define POKEY_Initialise(argc, argv) POKEY_Initialise_Ctx(Atari800_default, argc, argv)
+#define POKEY_Frame()                POKEY_Frame_Ctx(Atari800_default)
+#define POKEY_Scanline()             POKEY_Scanline_Ctx(Atari800_default)
+#define POKEY_StateSave()            POKEY_StateSave_Ctx(Atari800_default)
+#define POKEY_StateRead()            POKEY_StateRead_Ctx(Atari800_default)
+
 UBYTE POKEY_GetByte(UWORD addr, int no_side_effects);
 void POKEY_PutByte(UWORD addr, UBYTE byte);
-int POKEY_Initialise(int *argc, char *argv[]);
-void POKEY_Frame(void);
-void POKEY_Scanline(void);
-void POKEY_StateSave(void);
-void POKEY_StateRead(void);
 
 #endif
 
@@ -113,12 +135,13 @@ void POKEY_StateRead(void);
 #define POKEY_SAMPLE    127
 
 /* structures to hold the 9 pokey control bytes */
-extern UBYTE POKEY_AUDF[4 * POKEY_MAXPOKEYS];	/* AUDFx (D200, D202, D204, D206) */
-extern UBYTE POKEY_AUDC[4 * POKEY_MAXPOKEYS];	/* AUDCx (D201, D203, D205, D207) */
-extern UBYTE POKEY_AUDCTL[POKEY_MAXPOKEYS];		/* AUDCTL (D208) */
+#define POKEY_AUDF   (Atari800_default->pokey.AUDF)	/* AUDFx (D200, D202, D204, D206) */
+#define POKEY_AUDC   (Atari800_default->pokey.AUDC)	/* AUDCx (D201, D203, D205, D207) */
+#define POKEY_AUDCTL (Atari800_default->pokey.AUDCTL)		/* AUDCTL (D208) */
 
-extern int POKEY_DivNIRQ[4], POKEY_DivNMax[4];
-extern int POKEY_Base_mult[POKEY_MAXPOKEYS];	/* selects either 64Khz or 15Khz clock mult */
+#define POKEY_DivNIRQ (Atari800_default->pokey.DivNIRQ)
+#define POKEY_DivNMax (Atari800_default->pokey.DivNMax)
+#define POKEY_Base_mult (Atari800_default->pokey.Base_mult)	/* selects either 64Khz or 15Khz clock mult */
 
 extern UBYTE POKEY_poly9_lookup[POKEY_POLY9_SIZE];
 extern UBYTE POKEY_poly17_lookup[16385];

@@ -87,40 +87,82 @@ static ANTIC_state_t *A;
 #undef ANTIC_cur_screen_pos
 #undef ANTIC_pal_blending
 
-/* Pin the context to the default instance at each public entry point
-   (transitional; removed once callers pass Atari800_Instance explicitly). */
-#define ANTIC_SET_CTX() ((void) (A = &Atari800_default->antic))
-#define ANTIC_CHACTL   (Atari800_default->antic.CHACTL)
-#define ANTIC_CHBASE   (Atari800_default->antic.CHBASE)
-#define ANTIC_dlist    (Atari800_default->antic.dlist)
-#define ANTIC_DMACTL   (Atari800_default->antic.DMACTL)
-#define ANTIC_HSCROL   (Atari800_default->antic.HSCROL)
-#define ANTIC_NMIEN    (Atari800_default->antic.NMIEN)
-#define ANTIC_NMIST    (Atari800_default->antic.NMIST)
-#define ANTIC_PMBASE   (Atari800_default->antic.PMBASE)
-#define ANTIC_VSCROL   (Atari800_default->antic.VSCROL)
-#define ANTIC_break_ypos (Atari800_default->antic.break_ypos)
-#define ANTIC_ypos     (Atari800_default->antic.ypos)
-#define ANTIC_wsync_halt (Atari800_default->antic.wsync_halt)
-#define ANTIC_xpos     (Atari800_default->antic.xpos)
-#define ANTIC_xpos_limit (Atari800_default->antic.xpos_limit)
-#define ANTIC_screenline_cpu_clock (Atari800_default->antic.screenline_cpu_clock)
-#define ANTIC_artif_mode (Atari800_default->antic.artif_mode)
-#define ANTIC_artif_new  (Atari800_default->antic.artif_new)
-#define ANTIC_PENH_input (Atari800_default->antic.PENH_input)
-#define ANTIC_PENV_input (Atari800_default->antic.PENV_input)
-#define ANTIC_xe_ptr   (Atari800_default->antic.xe_ptr)
-#define ANTIC_player_dma_enabled   (Atari800_default->antic.player_dma_enabled)
-#define ANTIC_missile_dma_enabled  (Atari800_default->antic.missile_dma_enabled)
-#define ANTIC_player_gra_enabled   (Atari800_default->antic.player_gra_enabled)
-#define ANTIC_missile_gra_enabled  (Atari800_default->antic.missile_gra_enabled)
-#define ANTIC_player_flickering    (Atari800_default->antic.player_flickering)
-#define ANTIC_missile_flickering   (Atari800_default->antic.missile_flickering)
-#define ANTIC_delayed_wsync  (Atari800_default->antic.delayed_wsync)
-#define ANTIC_cur_screen_pos (Atari800_default->antic.cur_screen_pos)
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *AI;
+#define ANTIC_PIN_CTX(inst) ((void) (AI = (inst), A = &(inst)->antic))
+#define ANTIC_CHACTL   (A->CHACTL)
+#define ANTIC_CHBASE   (A->CHBASE)
+#define ANTIC_dlist    (A->dlist)
+#define ANTIC_DMACTL   (A->DMACTL)
+#define ANTIC_HSCROL   (A->HSCROL)
+#define ANTIC_NMIEN    (A->NMIEN)
+#define ANTIC_NMIST    (A->NMIST)
+#define ANTIC_PMBASE   (A->PMBASE)
+#define ANTIC_VSCROL   (A->VSCROL)
+#define ANTIC_break_ypos (A->break_ypos)
+#define ANTIC_ypos     (A->ypos)
+#define ANTIC_wsync_halt (A->wsync_halt)
+#define ANTIC_xpos     (A->xpos)
+#define ANTIC_xpos_limit (A->xpos_limit)
+#define ANTIC_screenline_cpu_clock (A->screenline_cpu_clock)
+#define ANTIC_artif_mode (A->artif_mode)
+#define ANTIC_artif_new  (A->artif_new)
+#define ANTIC_PENH_input (A->PENH_input)
+#define ANTIC_PENV_input (A->PENV_input)
+#define ANTIC_xe_ptr   (A->xe_ptr)
+#define ANTIC_player_dma_enabled   (A->player_dma_enabled)
+#define ANTIC_missile_dma_enabled  (A->missile_dma_enabled)
+#define ANTIC_player_gra_enabled   (A->player_gra_enabled)
+#define ANTIC_missile_gra_enabled  (A->missile_gra_enabled)
+#define ANTIC_player_flickering    (A->player_flickering)
+#define ANTIC_missile_flickering   (A->missile_flickering)
+#define ANTIC_delayed_wsync  (A->delayed_wsync)
+#define ANTIC_cur_screen_pos (A->cur_screen_pos)
 #ifndef NO_SIMPLE_PAL_BLENDING
-#define ANTIC_pal_blending (Atari800_default->antic.pal_blending)
+#define ANTIC_pal_blending (A->pal_blending)
 #endif
+
+/* The antic.h forwarding macros route legacy names to the default instance;
+   inside antic.c they are redefined to route to the instance pinned by
+   ANTIC_PIN_CTX() so the *_Ctx() bodies operate on their own instance. */
+#undef ANTIC_Reset
+#undef ANTIC_Frame
+#undef ANTIC_GetDLByte
+#undef ANTIC_GetDLWord
+#undef ANTIC_UpdateArtifacting
+#undef ANTIC_UpdateScanline
+#undef ANTIC_UpdateScanlinePrior
+#undef ANTIC_SetPrior
+#undef ANTIC_StateSave
+#undef ANTIC_StateRead
+#define ANTIC_Reset()                   ANTIC_Reset_Ctx(AI)
+#define ANTIC_Frame(draw_display)       ANTIC_Frame_Ctx(AI, draw_display)
+#define ANTIC_GetDLByte(paddr)          ANTIC_GetDLByte_Ctx(AI, paddr)
+#define ANTIC_GetDLWord(paddr)          ANTIC_GetDLWord_Ctx(AI, paddr)
+#define ANTIC_UpdateArtifacting()       ANTIC_UpdateArtifacting_Ctx(AI)
+#define ANTIC_UpdateScanline()          ANTIC_UpdateScanline_Ctx(AI)
+#define ANTIC_UpdateScanlinePrior(byte) ANTIC_UpdateScanlinePrior_Ctx(AI, byte)
+#define ANTIC_SetPrior(byte)            ANTIC_SetPrior_Ctx(AI, byte)
+#define ANTIC_StateSave()               ANTIC_StateSave_Ctx(AI)
+#define ANTIC_StateRead()               ANTIC_StateRead_Ctx(AI)
+
+/* Legacy entry points kept for the memory-map function-pointer tables and
+   not-yet-migrated callers; they pin the default instance. They must be
+   defined before the internal ANTIC_GetByte/ANTIC_PutByte macros below. */
+UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects)
+{
+	return ANTIC_GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+void ANTIC_PutByte(UWORD addr, UBYTE byte)
+{
+	ANTIC_PutByte_Ctx(Atari800_default, addr, byte);
+}
+
+#undef ANTIC_GetByte
+#undef ANTIC_PutByte
+#define ANTIC_GetByte(addr, no_side_effects) ANTIC_GetByte_Ctx(AI, addr, no_side_effects)
+#define ANTIC_PutByte(addr, byte)            ANTIC_PutByte_Ctx(AI, addr, byte)
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 static int gtia_bug_active = FALSE; /* The GTIA bug mode is active */
 #endif
@@ -246,15 +288,15 @@ static UBYTE *scratchFillLimit;
 
 #define READ_VIDEO_LONG(ptr) (*(ptr))
 
-void ANTIC_VideoMemset(UBYTE *ptr, UBYTE val, ULONG size)
+void ANTIC_VideoMemset_Ctx(Atari800_Instance *inst, UBYTE *ptr, UBYTE val, ULONG size)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	FILL_VIDEO(ptr, val, size);
 }
 
-void ANTIC_VideoPutByte(UBYTE *ptr, UBYTE val)
+void ANTIC_VideoPutByte_Ctx(Atari800_Instance *inst, UBYTE *ptr, UBYTE val)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	WRITE_VIDEO_BYTE(ptr, val);
 }
 
@@ -987,9 +1029,9 @@ static void setup_art_colours(void)
 
 /* Initialization ---------------------------------------------------------- */
 
-int ANTIC_Initialise(int *argc, char *argv[])
+int ANTIC_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	int i, j;
 
@@ -1056,9 +1098,9 @@ int ANTIC_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void ANTIC_Reset(void)
+void ANTIC_Reset_Ctx(Atari800_Instance *inst)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	ANTIC_NMIEN = 0x00;
 	ANTIC_NMIST = 0x1f;
 	ANTIC_PutByte(ANTIC_OFFSET_DMACTL, 0);
@@ -2684,9 +2726,9 @@ static void draw_antic_0_dmactl_bug(int nchars, const UBYTE *antic_memptr, UWORD
 
 /* Artifacting ------------------------------------------------------------ */
 
-void ANTIC_UpdateArtifacting(void)
+void ANTIC_UpdateArtifacting_Ctx(Atari800_Instance *inst)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 #define ART_BROWN 0
 #define ART_BLUE 1
 #define ART_DARK_BROWN 2
@@ -2806,9 +2848,9 @@ void ANTIC_UpdateArtifacting(void)
 
 /* Display List ------------------------------------------------------------ */
 
-UBYTE ANTIC_GetDLByte(UWORD *paddr)
+UBYTE ANTIC_GetDLByte_Ctx(Atari800_Instance *inst, UWORD *paddr)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	int addr = *paddr;
 	UBYTE result;
 	if (ANTIC_xe_ptr != NULL && addr < 0x8000 && addr >= 0x4000)
@@ -2822,9 +2864,9 @@ UBYTE ANTIC_GetDLByte(UWORD *paddr)
 	return result;
 }
 
-UWORD ANTIC_GetDLWord(UWORD *paddr)
+UWORD ANTIC_GetDLWord_Ctx(Atari800_Instance *inst, UWORD *paddr)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	UBYTE lsb = ANTIC_GetDLByte(paddr);
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	if (ANTIC_player_flickering && ((GTIA_VDELAY & 0x80) == 0 || ANTIC_ypos & 1))
@@ -2890,9 +2932,9 @@ static int scanlines_to_curses_display = 0;
 #endif
 
 /* This function emulates one frame drawing screen at Screen_atari */
-void ANTIC_Frame(int draw_display)
+void ANTIC_Frame_Ctx(Atari800_Instance *inst, int draw_display)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	static const UBYTE mode_type[32] = {
 		NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL1, NORMAL1,
 		NORMAL2, NORMAL2, NORMAL1, NORMAL1, NORMAL1, NORMAL0, NORMAL0, NORMAL0,
@@ -3250,9 +3292,9 @@ void ANTIC_Frame(int draw_display)
 
 /* update the scanline from the last changed position to the current
 position, when a change was made to a display register during drawing */
-void ANTIC_UpdateScanline(void)
+void ANTIC_UpdateScanline_Ctx(Atari800_Instance *inst)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	int actual_xpos = ANTIC_cpu2antic_ptr[ANTIC_xpos];
         int oldpos = ANTIC_cur_screen_pos;
 	ANTIC_cur_screen_pos = actual_xpos * 2 - 37;
@@ -3263,9 +3305,9 @@ void ANTIC_UpdateScanline(void)
 between mode changes */
 /* TODO: support glitches between mode changes (tiny areas that are neither
 the new mode nor the old mode, which occur between mode changes */
-void ANTIC_UpdateScanlinePrior(UBYTE byte)
+void ANTIC_UpdateScanlinePrior_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	int actual_xpos = ANTIC_cpu2antic_ptr[ANTIC_xpos];
 	int prior_mode_adj = 2;
 	int oldpos = ANTIC_cur_screen_pos;
@@ -3554,9 +3596,9 @@ void draw_partial_scanline(int l, int r)
 
 /* ANTIC registers --------------------------------------------------------- */
 
-UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects)
+UBYTE ANTIC_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	switch (addr & 0xf) {
 	case ANTIC_OFFSET_VCOUNT:
 		if (ANTIC_XPOS < ANTIC_LINE_C)
@@ -3578,9 +3620,9 @@ UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects)
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 
 /* GTIA calls it on write to PRIOR */
-void ANTIC_SetPrior(UBYTE byte)
+void ANTIC_SetPrior_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	if ((byte ^ GTIA_PRIOR) & 0x0f) {
 #ifdef USE_COLOUR_TRANSLATION_TABLE
 		UBYTE col = 0;
@@ -3733,9 +3775,9 @@ void ANTIC_SetPrior(UBYTE byte)
 
 #endif /* !defined(BASIC) && !defined(CURSES_BASIC) */
 
-void ANTIC_PutByte(UWORD addr, UBYTE byte)
+void ANTIC_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	switch (addr & 0xf) {
 	case ANTIC_OFFSET_DLISTL:
 		ANTIC_dlist = (ANTIC_dlist & 0xff00) | byte;
@@ -4143,9 +4185,9 @@ case we have ANTIC_cpu2antic_ptr[ANTIC_WSYNC_C+1]-1 = 8 and in the 2nd =12  */
 
 #ifndef BASIC
 
-void ANTIC_StateSave(void)
+void ANTIC_StateSave_Ctx(Atari800_Instance *inst)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	STATESAV_TAG(antic);
 	StateSav_SaveUBYTE(&ANTIC_DMACTL, 1);
 	StateSav_SaveUBYTE(&ANTIC_CHACTL, 1);
@@ -4170,9 +4212,9 @@ void ANTIC_StateSave(void)
 	StateSav_SaveINT(&ANTIC_ypos, 1);
 }
 
-void ANTIC_StateRead(void)
+void ANTIC_StateRead_Ctx(Atari800_Instance *inst)
 {
-	ANTIC_SET_CTX();
+	ANTIC_PIN_CTX(inst);
 	StateSav_ReadUBYTE(&ANTIC_DMACTL, 1);
 	StateSav_ReadUBYTE(&ANTIC_CHACTL, 1);
 	StateSav_ReadUBYTE(&ANTIC_HSCROL, 1);

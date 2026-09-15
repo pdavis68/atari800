@@ -743,7 +743,8 @@ static void DiskManagement(void)
 {
 	static char drive_array[8][5] = { " D1:", " D2:", " D3:", " D4:", " D5:", " D6:", " D7:", " D8:" };
 
-	static UI_tMenuItem menu_array[] = {
+	/* not static: initialised from per-instance SIO state */
+	UI_tMenuItem menu_array[] = {
 		UI_MENU_FILESEL_PREFIX_TIP(0, drive_array[0], SIO_filename[0], NULL),
 		UI_MENU_FILESEL_PREFIX_TIP(1, drive_array[1], SIO_filename[1], NULL),
 		UI_MENU_FILESEL_PREFIX_TIP(2, drive_array[2], SIO_filename[2], NULL),
@@ -1534,7 +1535,8 @@ static void TapeManagement(void)
 	static char position_string[17];
 	static char cas_symbol[] = " C:";
 
-	static UI_tMenuItem menu_array[] = {
+	/* not static: initialised from per-instance Cassette state */
+	UI_tMenuItem menu_array[] = {
 		UI_MENU_FILESEL_PREFIX_TIP(0, cas_symbol, NULL, NULL),
 		UI_MENU_LABEL("Description:"),
 		UI_MENU_LABEL(CASSETTE_description),
@@ -1648,7 +1650,8 @@ static void TapeManagement(void)
 static void HDeviceStatus(void)
 {
 	static char open_info[] = " 0 currently open files";
-	static UI_tMenuItem menu_array[] = {
+	/* not static: initialised from per-instance Devices state */
+	UI_tMenuItem menu_array[] = {
 		UI_MENU_ACTION(0, "Devices enabled:"),
 		UI_MENU_ACTION(1, "SIO letter:"),
 		UI_MENU_FILESEL_PREFIX_TIP(2, "Device 1 path: ", Devices_atari_h_dir[0], "Also device 6 with ASCII conversion"),
@@ -2252,7 +2255,8 @@ static void AtariSettings(void)
 	};
 #endif /* XEP80_EMULATION */
 
-	static UI_tMenuItem menu_array[] = {
+	/* not static: initialised from per-instance Devices state */
+	UI_tMenuItem menu_array[] = {
 		UI_MENU_CHECK(0, "Disable BASIC when booting Atari:"),
 		UI_MENU_CHECK(1, "Boot from tape (hold Start):"),
 		UI_MENU_CHECK(2, "Enable R-Time 8:"),

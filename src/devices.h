@@ -3,6 +3,7 @@
 
 #include <stdio.h> /* FILENAME_MAX */
 #include "atari.h" /* UWORD */
+#include "instance.h" /* Devices_state_t (transitional default-instance aliases) */
 
 int Devices_Initialise(int *argc, char *argv[]);
 void Devices_Exit(void);
@@ -12,34 +13,31 @@ void Devices_UpdatePatches(void);
 
 UWORD Devices_SkipDeviceName(void);
 
-extern int Devices_enable_h_patch;
-extern int Devices_enable_p_patch;
-extern int Devices_enable_r_patch;
-extern int Devices_enable_b_patch;
+/* Transitional Option C bridge: the per-instance Devices state lives in
+   Devices_state_t (instance.h). Until all callers pass an instance
+   explicitly, the legacy global names are aliased to the default instance. */
+#define Devices_enable_h_patch (Atari800_default->devices.enable_h_patch)
+#define Devices_enable_p_patch (Atari800_default->devices.enable_p_patch)
+#define Devices_enable_r_patch (Atari800_default->devices.enable_r_patch)
+#define Devices_enable_b_patch (Atari800_default->devices.enable_b_patch)
 
-extern char Devices_atari_h_dir[4][FILENAME_MAX];
-extern int Devices_h_read_only;
+#define Devices_atari_h_dir    (Atari800_default->devices.atari_h_dir)
+#define Devices_h_read_only    (Atari800_default->devices.h_read_only)
 
-extern char Devices_h_exe_path[FILENAME_MAX];
+#define Devices_h_exe_path     (Atari800_default->devices.h_exe_path)
 
-extern char Devices_h_device_name;
+#define Devices_h_device_name  (Atari800_default->devices.h_device_name)
 
-extern char Devices_h_current_dir[4][FILENAME_MAX];
+#define Devices_h_current_dir  (Atari800_default->devices.h_current_dir)
 
 int Devices_H_CountOpen(void);
 void Devices_H_CloseAll(void);
 
-extern char Devices_print_command[256];
+#define Devices_print_command  (Atari800_default->devices.print_command)
 
 int Devices_SetPrintCommand(const char *command);
 
-struct DEV_B
-{
-	char url[512];
-	int  pos;
-	int  ready;
-};
-extern struct DEV_B dev_b_status;
+#define dev_b_status (Atari800_default->devices.dev_b_status)
 
 
 #define	Devices_ICHIDZ	0x0020
