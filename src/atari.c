@@ -68,6 +68,7 @@
 #include "artifact.h"
 #include "atari.h"
 #include "binload.h"
+#include "instance.h"
 #include "cartridge.h"
 #include "cassette.h"
 #include "cfg.h"
@@ -177,6 +178,43 @@ int Atari800_os_version = -1;
 
 int verbose = FALSE;
 
+/* Transitional default instance (see instance.h). Statically allocated so the
+   legacy memory globals (which alias its memory) are always valid, even before
+   Atari800_Initialise() runs. */
+static Atari800_Instance default_instance_storage = {
+	.memory = {
+		.ram_size = 64,
+		.mosaic_curbank = 0x3f,
+	},
+	.antic = {
+		.break_ypos = 999,
+		.PENV_input = 0xff,
+#ifdef NEW_CYCLE_EXACT
+		.cur_screen_pos = ANTIC_NOT_DRAWING,
+#endif
+	},
+};
+Atari800_Instance *Atari800_default = &default_instance_storage;
+
+Atari800_Instance *Atari800_NewInstance(void)
+{
+	Atari800_Instance *inst = (Atari800_Instance *) calloc(1, sizeof(Atari800_Instance));
+	if (inst == NULL)
+		return NULL;
+	/* Sensible defaults; the machine is fully configured by
+	   Atari800_InitialiseMachine() / Atari800_Initialise(). */
+	inst->machine_type = Atari800_MACHINE_XLXE;
+	inst->tv_mode = Atari800_TV_PAL;
+	inst->memory.ram_size = 64;
+	return inst;
+}
+
+void Atari800_FreeInstance(Atari800_Instance *inst)
+{
+	if (inst != NULL)
+		free(inst);
+}
+
 int Atari800_display_screen = FALSE;
 int Atari800_nframes = 0;
 int Atari800_refresh_rate = 1;
@@ -242,7 +280,7 @@ void Atari800_Warmstart(void)
 		/* RESET key in 400/800 does not reset chips,
 		   but only generates RNMI interrupt */
 		ANTIC_NMIST = 0x3f;
-		CPU_NMI();
+		CPU_NMI(Atari800_default);
 	}
 	else {
 		PBI_Reset();
@@ -250,7 +288,7 @@ void Atari800_Warmstart(void)
 		ANTIC_Reset();
 		/* CPU_Reset() must be after PIA_Reset(),
 		   because Reset routine vector must be read from OS ROM */
-		CPU_Reset();
+		CPU_Reset(Atari800_default);
 		/* note: POKEY and GTIA have no Reset pin */
 	}
 #ifdef __PLUS
@@ -269,7 +307,7 @@ void Atari800_Coldstart(void)
 	ANTIC_Reset();
 	/* CPU_Reset() must be after PIA_Reset(),
 	   because Reset routine vector must be read from OS ROM */
-	CPU_Reset();
+	CPU_Reset(Atari800_default);
 	/* note: POKEY and GTIA have no Reset pin */
 #ifdef __PLUS
 	HandleResetEvent();
@@ -1368,11 +1406,11 @@ static void basic_antic_scanline(void)
 		}
 	}
 	if (scanlines_to_dl == 1 && (IR & 0x80)) {
-		CPU_GO(ANTIC_NMIST_C);
+		CPU_GO(Atari800_default, ANTIC_NMIST_C);
 		ANTIC_NMIST = 0x9f;
 		if (ANTIC_NMIEN & 0x80) {
-			CPU_GO(ANTIC_NMI_C);
-			CPU_NMI();
+			CPU_GO(Atari800_default, ANTIC_NMI_C);
+			CPU_NMI(Atari800_default);
 		}
 	}
 #ifdef CURSES_BASIC
@@ -1403,7 +1441,7 @@ static void basic_antic_scanline(void)
 	}
 }
 
-#define BASIC_LINE CPU_GO(ANTIC_LINE_C); ANTIC_xpos -= ANTIC_LINE_C - ANTIC_DMAR; ANTIC_screenline_cpu_clock += ANTIC_LINE_C; ANTIC_ypos++
+#define BASIC_LINE CPU_GO(Atari800_default, ANTIC_LINE_C); ANTIC_xpos -= ANTIC_LINE_C - ANTIC_DMAR; ANTIC_screenline_cpu_clock += ANTIC_LINE_C; ANTIC_ypos++
 
 static void basic_frame(void)
 {
@@ -1424,11 +1462,11 @@ static void basic_frame(void)
 
 	/* scanline 248 */
 	POKEY_Scanline();			/* check and generate IRQ */
-	CPU_GO(ANTIC_NMIST_C);
+	CPU_GO(Atari800_default, ANTIC_NMIST_C);
 	ANTIC_NMIST = 0x5f;				/* Set VBLANK */
 	if (ANTIC_NMIEN & 0x40) {
-		CPU_GO(ANTIC_NMI_C);
-		CPU_NMI();
+		CPU_GO(Atari800_default, ANTIC_NMI_C);
+		CPU_NMI(Atari800_default);
 	}
 	BASIC_LINE;
 

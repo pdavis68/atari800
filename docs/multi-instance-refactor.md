@@ -257,8 +257,10 @@ is the central design decision for the whole refactor.
 ## 6. Refactor Design Options
 
 There are three viable strategies, in increasing order of invasiveness. They are
-**not mutually exclusive** — the recommended path is a hybrid (Option A now, then
-Option B/C for true parallelism).
+**not mutually exclusive**, but the project has **decided to commit to Option C**
+(the full context-object refactor) as the target architecture. Options A and B are
+documented here for context and as possible stepping stones, but the plan below
+assumes Option C.
 
 ### Option A — "Context struct + current-instance pointer" (re-entrant, single-threaded)
 
@@ -374,56 +376,72 @@ UBYTE MEMORY_GetByte(Atari800_Instance *inst, UWORD addr, int safe);
 
 ---
 
-## 7. Recommended Approach
+## 7. Recommended Approach (Decision: Option C)
 
-**Adopt Option A now, evolve toward Option B, and only consider Option C for the
-hottest paths later.**
+**The project has committed to Option C — the full context-object refactor.** Every
+emulation module will take an explicit `Atari800_Instance *` (or a per-module
+sub-context) as its first parameter, and the global memory macros will be replaced
+with explicit context-aware access. This is the most invasive option but yields the
+cleanest, fully re-entrant, thread-safe architecture and the most flexibility for
+future features (per-instance config, independent save states, parallel frames).
 
-### Phase 1 — Introduce the instance struct and "current instance" pointer
+The migration is deliberately phased so the tree stays buildable at each step. The
+detailed per-module work items live in
+[`docs/refactor-checklist.md`](refactor-checklist.md); the phases below are the
+high-level sequence.
 
-1. Define `Atari800_Instance` in a new header (e.g. `src/instance.h`) aggregating
-   the per-instance state from §3.
-2. Add `Atari800_current` (a plain global for now).
-3. Convert the memory globals to macros over `Atari800_current`:
-   - `MEMORY_mem` → `(Atari800_current->mem)`
-   - `MEMORY_attrib` / `MEMORY_readmap` / `MEMORY_writemap` → current-instance fields
-4. Move the CPU register globals into the struct and alias them via macros
-   (`#define CPU_regPC (Atari800_current->cpu_regPC)`), so `cpu.c` is untouched.
-5. Do the same for the chip registers (ANTIC/GTIA/POKEY/PIA) and the top-level
-   `Atari800_*` config variables.
+### Phase 1 — Define the instance context and the memory access layer
 
-> **Key trick:** by aliasing existing globals to `Atari800_current->field` via
-> macros, the entire existing codebase compiles unchanged. This is the lowest-risk
-> way to introduce the instance concept.
+1. Define `Atari800_Instance` in a new header (`src/instance.h`) aggregating the
+   per-instance state from §3, plus per-module sub-structs (`ANTIC_state_t`,
+   `GTIA_state_t`, `POKEY_state_t`, `PIA_state_t`, `SIO_state_t`, etc.).
+2. Replace the global memory macros with context-aware accessors. The CPU hot path
+   is the priority: introduce a `MEMORY_State` (or pass the instance) and rewrite
+   the ~140 macro call sites in `cpu.c` to use it. Keep the accessors `static
+   inline` so the compiler can still optimize the common RAM case to a direct
+   array access (avoiding function-pointer indirection in the hot loop).
+3. Convert the CPU register globals into `CPU_state_t` and thread it through the
+   decoder.
 
-### Phase 2 — Move `static` module internals into the struct
+### Phase 2 — Convert each chip module to take the context
 
-The `static` variables inside each `.c` file (SIO file handles, cassette position,
-cartridge image buffers, PBI state, etc.) must be relocated into the instance
-struct (or into per-module sub-structs referenced from it). This is the bulk of the
-mechanical work. Each module gets an `Init`/`Reset` that (re)initializes its slice
-of the instance.
+Convert ANTIC, GTIA, POKEY, PIA, and the memory subsystem one at a time. Each
+module's `*_GetByte`/`*_PutByte`/`*_Frame`/`*_Reset`/`*_StateSave`/`*_StateRead`
+functions take the instance (or sub-context) as their first argument. Update the
+callers in `atari.c`, `memory.c`, and `cpu.c` accordingly. Build and test after
+each module.
 
-### Phase 3 — Add instance lifecycle API
+### Phase 3 — Convert peripheral modules
+
+Convert SIO, devices, cartridge, cassette, PBI (and all `pbi_*` sub-modules),
+RTIME, XEP80, AF80, BIT3, IDE, voicebox, input, and the ESC/binload handlers to
+take the context. This is the bulk of the mechanical work.
+
+### Phase 4 — Convert output/input and the platform layer
+
+Make the framebuffer (`Screen_atari`), dirty-rect state, sound buffers, and input
+state per-instance. Update the platform ports (`sdl/`, `atari_x11.c`,
+`atari_rpi.c`, `macosx/`, `android/`, etc.) to drive instances through the new API.
+The `log` subsystem and config-file handling remain process-global.
+
+### Phase 5 — Add the multi-instance lifecycle API
 
 ```c
 Atari800_Instance *Atari800_NewInstance(void);
 void Atari800_FreeInstance(Atari800_Instance *inst);
 void Atari800_FrameInstance(Atari800_Instance *inst);
 void Atari800_ColdstartInstance(Atari800_Instance *inst);
+void Atari800_WarmstartInstance(Atari800_Instance *inst);
 ```
 
 Extend `libatari800` so callers can create and drive multiple instances. The
-existing single-instance API can be re-implemented on top of a default instance.
+existing single-instance API is re-implemented on top of a default instance.
 
-### Phase 4 — Parallelism (optional, later)
+### Phase 6 — Parallelism (optional, later)
 
-- If true parallel execution is required, make `Atari800_current` thread-local
-  (Option B) and ensure each instance runs on its own thread.
-- Handle the **output side** per instance: each instance needs its own framebuffer
-  (`Screen_atari`), its own sound buffer, and its own input source. The display and
-  audio backends must be made per-instance or the frontend must composite/mix them.
-- The `log` subsystem and config-file handling should remain process-global.
+Because Option C removes all shared mutable state, instances can be driven from
+separate threads with no global lock. Each instance owns its framebuffer, sound
+buffer, and input source; the frontend composites video and mixes audio.
 
 ---
 
@@ -442,42 +460,52 @@ Keep these process-global and read-only:
 
 ## 9. Risks and Considerations
 
-1. **Performance:** The memory macros currently inline to direct array access.
-   Aliasing via `Atari800_current->mem` adds one pointer dereference per access.
-   This is usually negligible, but the CPU hot loop should be benchmarked. If it
-   regresses, keep a fast path that caches the memory pointer in a local during
-   `CPU_GO`.
-2. **Platform ports:** `sdl/`, `atari_x11.c`, `atari_rpi.c`, `macosx/`, `android/`,
+1. **Performance (the big one):** The memory macros currently inline to direct
+   array access. Replacing them with context-aware accessors risks adding
+   indirection in the CPU hot loop. Mitigation: keep the accessors `static inline`
+   and structure the memory state so the common RAM case compiles to a direct
+   array access (e.g. cache the `mem` pointer in a local at the top of `CPU_GO`).
+   Benchmark before/after each phase.
+2. **Large diff / regression risk:** Option C touches every module and every
+   platform port. Mitigation: migrate module-by-module, keeping the tree buildable
+   after each step, and lean on the existing test suite (`test/`, `acidtest`,
+   `libatari800_test.c`).
+3. **Platform ports:** `sdl/`, `atari_x11.c`, `atari_rpi.c`, `macosx/`, `android/`,
    etc. all touch the globals directly. They must be updated to use the instance
    API, or the multi-instance feature should initially be exposed only through
    `libatari800` while the standalone ports keep using a default instance.
-3. **Sound/display backends** are inherently single-device. Multiple instances
+4. **Sound/display backends** are inherently single-device. Multiple instances
    need either per-instance backends or a frontend that mixes audio and tiles
    video.
-4. **State save/load** (`statesav.c`) reads/writes the globals; it must be made
+5. **State save/load** (`statesav.c`) reads/writes the globals; it must be made
    instance-aware so each instance can save/load independently.
-5. **Monitor/debugger** (`monitor.c`) is single-instance today; decide whether it
-   attaches to the "current" instance.
-6. **Threading:** Option A is not thread-safe. If instances are driven from
-   different threads, either use Option B (thread-local) or serialize with a lock.
+6. **Monitor/debugger** (`monitor.c`) is single-instance today; decide whether it
+   attaches to a specific instance.
 7. **`static` state is the hidden trap:** the public `extern` globals are easy to
    find, but every `static` variable in every `.c` file is also per-instance state
    and must be audited. A grep for `^static` in `src/*.c` is a good starting point.
+8. **Shared/immutable data** (ROM images, POKEY polynomial tables, colour lookup
+   tables) must be kept read-only so they can be safely shared across instances.
 
 ---
 
 ## 10. Suggested First Steps
 
-1. Create `src/instance.h` with the `Atari800_Instance` struct skeleton.
-2. Convert `MEMORY_mem` and the CPU registers to macros over `Atari800_current`
-   and confirm the existing build still passes (this validates the whole approach
-   with minimal risk).
-3. Add `Atari800_NewInstance` / `Atari800_FrameInstance` and a small test that
+1. Create `src/instance.h` with the `Atari800_Instance` struct skeleton and the
+   per-module sub-structs.
+2. Build the context-aware memory access layer and convert the CPU decoder
+   (`cpu.c`) to use it, keeping the accessors `static inline`. Confirm the existing
+   build and tests still pass.
+3. Convert the memory subsystem (`memory.c`) and the chip modules (ANTIC, GTIA,
+   POKEY, PIA) one at a time, updating callers in `atari.c` after each.
+4. Convert the peripheral modules (SIO, devices, cartridge, cassette, PBI, etc.).
+5. Add `Atari800_NewInstance` / `Atari800_FrameInstance` and a small test that
    creates two instances, runs each for a few frames, and verifies their memory
    and CPU state are independent.
-4. Audit and migrate `static` variables module-by-module (start with `sio.c`,
-   `cassette.c`, `cartridge.c`).
-5. Extend `libatari800` to expose the multi-instance API.
+6. Extend `libatari800` to expose the multi-instance API.
+
+> The detailed, per-module work items are enumerated in
+> [`docs/refactor-checklist.md`](refactor-checklist.md).
 
 ---
 
@@ -489,10 +517,15 @@ The emulator is a **single global instance** today. The main blockers are:
 - **Per-module `extern` and `static` state** for every chip and peripheral.
 - **Single-instance output** (framebuffer, sound) and **single-instance input**.
 
-The lowest-risk path to "multiple instances side-by-side" is **Option A**: introduce
-an `Atari800_Instance` struct and a "current instance" pointer, alias the existing
-globals to it via macros so the codebase compiles unchanged, then migrate `static`
-internals into the struct. This yields coexisting instances immediately and can be
-upgraded to per-thread parallelism (Option B) later. A full function-pointer
-context refactor (Option C) is the cleanest end-state but is a much larger,
-higher-risk undertaking.
+**Decision: the project is committing to Option C — the full context-object
+refactor.** Every module will take an explicit instance/context pointer, and the
+global memory macros will be replaced with context-aware accessors. This is the
+most invasive option, but it removes all shared mutable state, making the core
+fully re-entrant, thread-safe, and flexible for future features.
+
+The migration is phased so the tree stays buildable at each step: define the
+instance context and memory access layer → convert the CPU and chip modules →
+convert the peripheral modules → convert output/input and the platform layer →
+add the multi-instance lifecycle API → (optionally) enable parallel frames. The
+detailed per-module work items are enumerated in
+[`docs/refactor-checklist.md`](refactor-checklist.md).

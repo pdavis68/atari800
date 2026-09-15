@@ -2,6 +2,7 @@
 #define ANTIC_H_
 
 #include "atari.h"
+#include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 
 /*
  * Offset to registers in custom relative to start of antic memory addresses.
@@ -23,30 +24,33 @@
 #define ANTIC_OFFSET_NMIRES 0x0f
 #define ANTIC_OFFSET_NMIST 0x0f
 
-extern UBYTE ANTIC_CHACTL;
-extern UBYTE ANTIC_CHBASE;
-extern UWORD ANTIC_dlist;
-extern UBYTE ANTIC_DMACTL;
-extern UBYTE ANTIC_HSCROL;
-extern UBYTE ANTIC_NMIEN;
-extern UBYTE ANTIC_NMIST;
-extern UBYTE ANTIC_PMBASE;
-extern UBYTE ANTIC_VSCROL;
+/* Transitional Option C bridge: the per-instance ANTIC state lives in
+   ANTIC_state_t (instance.h). Until all callers pass an instance explicitly,
+   the legacy global names are aliased to the default instance. */
+#define ANTIC_CHACTL   (Atari800_default->antic.CHACTL)
+#define ANTIC_CHBASE   (Atari800_default->antic.CHBASE)
+#define ANTIC_dlist    (Atari800_default->antic.dlist)
+#define ANTIC_DMACTL   (Atari800_default->antic.DMACTL)
+#define ANTIC_HSCROL   (Atari800_default->antic.HSCROL)
+#define ANTIC_NMIEN    (Atari800_default->antic.NMIEN)
+#define ANTIC_NMIST    (Atari800_default->antic.NMIST)
+#define ANTIC_PMBASE   (Atari800_default->antic.PMBASE)
+#define ANTIC_VSCROL   (Atari800_default->antic.VSCROL)
 
-extern int ANTIC_break_ypos;
-extern int ANTIC_ypos;
-extern int ANTIC_wsync_halt;
+#define ANTIC_break_ypos (Atari800_default->antic.break_ypos)
+#define ANTIC_ypos     (Atari800_default->antic.ypos)
+#define ANTIC_wsync_halt (Atari800_default->antic.wsync_halt)
 
 /* Current clock cycle in a scanline.
    Normally 0 <= ANTIC_xpos && ANTIC_xpos < ANTIC_LINE_C, but in some cases ANTIC_xpos >= ANTIC_LINE_C,
    which means that we are already in line (ypos + 1). */
-extern int ANTIC_xpos;
+#define ANTIC_xpos     (Atari800_default->antic.xpos)
 
 /* ANTIC_xpos limit for the currently running 6502 emulation. */
-extern int ANTIC_xpos_limit;
+#define ANTIC_xpos_limit (Atari800_default->antic.xpos_limit)
 
 /* Main clock value at the beginning of the current scanline. */
-extern unsigned int ANTIC_screenline_cpu_clock;
+#define ANTIC_screenline_cpu_clock (Atari800_default->antic.screenline_cpu_clock)
 
 /* Current main clock value. */
 #define ANTIC_CPU_CLOCK (ANTIC_screenline_cpu_clock + ANTIC_XPOS)
@@ -65,11 +69,11 @@ extern unsigned int ANTIC_screenline_cpu_clock;
    memory refresh cycles. */
 #define ANTIC_DMAR     9
 
-extern int ANTIC_artif_mode;
-extern int ANTIC_artif_new;
+#define ANTIC_artif_mode (Atari800_default->antic.artif_mode)
+#define ANTIC_artif_new  (Atari800_default->antic.artif_new)
 
-extern UBYTE ANTIC_PENH_input;
-extern UBYTE ANTIC_PENV_input;
+#define ANTIC_PENH_input (Atari800_default->antic.PENH_input)
+#define ANTIC_PENV_input (Atari800_default->antic.PENV_input)
 
 int ANTIC_Initialise(int *argc, char *argv[]);
 void ANTIC_Reset(void);
@@ -97,15 +101,15 @@ void ANTIC_StateRead(void);
 /* Pointer to 16 KB seen by ANTIC in 0x4000-0x7fff.
    If it's the same what the CPU sees (and what's in memory[0x4000..0x7fff],
    then NULL. */
-extern const UBYTE *ANTIC_xe_ptr;
+#define ANTIC_xe_ptr   (Atari800_default->antic.xe_ptr)
 
 /* PM graphics for GTIA */
-extern int ANTIC_player_dma_enabled;
-extern int ANTIC_missile_dma_enabled;
-extern int ANTIC_player_gra_enabled;
-extern int ANTIC_missile_gra_enabled;
-extern int ANTIC_player_flickering;
-extern int ANTIC_missile_flickering;
+#define ANTIC_player_dma_enabled   (Atari800_default->antic.player_dma_enabled)
+#define ANTIC_missile_dma_enabled  (Atari800_default->antic.missile_dma_enabled)
+#define ANTIC_player_gra_enabled   (Atari800_default->antic.player_gra_enabled)
+#define ANTIC_missile_gra_enabled  (Atari800_default->antic.missile_gra_enabled)
+#define ANTIC_player_flickering    (Atari800_default->antic.player_flickering)
+#define ANTIC_missile_flickering   (Atari800_default->antic.missile_flickering)
 
 /* ANTIC colour lookup tables, used by GTIA */
 extern UWORD ANTIC_cl[128];
@@ -116,8 +120,8 @@ extern UWORD ANTIC_hires_lookup_l[128];
 #ifdef NEW_CYCLE_EXACT
 #define ANTIC_NOT_DRAWING -999
 #define ANTIC_DRAWING_SCREEN (ANTIC_cur_screen_pos!=ANTIC_NOT_DRAWING)
-extern int ANTIC_delayed_wsync;
-extern int ANTIC_cur_screen_pos;
+#define ANTIC_delayed_wsync  (Atari800_default->antic.delayed_wsync)
+#define ANTIC_cur_screen_pos (Atari800_default->antic.cur_screen_pos)
 extern const int *ANTIC_cpu2antic_ptr;
 extern const int *ANTIC_antic2cpu_ptr;
 void ANTIC_UpdateScanline(void);
@@ -131,7 +135,7 @@ void ANTIC_UpdateScanlinePrior(UBYTE byte);
 #ifndef NO_SIMPLE_PAL_BLENDING
 /* Set to 1 to enable simplified emulation of PAL blending, that uses only
    the standard 8-bit palette. */
-extern int ANTIC_pal_blending;
+#define ANTIC_pal_blending (Atari800_default->antic.pal_blending)
 #endif /* NO_SIMPLE_PAL_BLENDING */
 
 #endif /* ANTIC_H_ */

@@ -360,7 +360,7 @@ int StateSav_SaveAtariState(const char *filename, const char *mode, UBYTE SaveVe
 	CARTRIDGE_StateSave();
 	SIO_StateSave();
 	ANTIC_StateSave();
-	CPU_StateSave(SaveVerbose);
+	CPU_StateSave(Atari800_default, SaveVerbose);
 	GTIA_StateSave();
 	PIA_StateSave();
 	POKEY_StateSave();
@@ -468,7 +468,7 @@ int StateSav_ReadAtariState(const char *filename, const char *mode)
 		SIO_StateRead();
 	}
 	ANTIC_StateRead();
-	CPU_StateRead(SaveVerbose, StateVersion);
+	CPU_StateRead(Atari800_default, SaveVerbose, StateVersion);
 	GTIA_StateRead(StateVersion);
 	PIA_StateRead(StateVersion);
 	POKEY_StateRead();

@@ -30,6 +30,7 @@
 #include "asap_internal.h"
 #else
 #include "atari.h"
+#include "instance.h"
 #endif
 
 #define CPU_N_FLAG 0x80
@@ -40,21 +41,26 @@
 #define CPU_Z_FLAG 0x02
 #define CPU_C_FLAG 0x01
 
-void CPU_GetStatus(void);
-void CPU_PutStatus(void);
-void CPU_Reset(void);
-void CPU_StateSave(UBYTE SaveVerbose);
-void CPU_StateRead(UBYTE SaveVerbose, UBYTE StateVersion);
-void CPU_NMI(void);
-void CPU_GO(int limit);
+void CPU_GetStatus(Atari800_Instance *inst);
+void CPU_PutStatus(Atari800_Instance *inst);
+void CPU_Reset(Atari800_Instance *inst);
+void CPU_StateSave(Atari800_Instance *inst, UBYTE SaveVerbose);
+void CPU_StateRead(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE StateVersion);
+void CPU_NMI(Atari800_Instance *inst);
+void CPU_GO(Atari800_Instance *inst, int limit);
 #define CPU_GenerateIRQ() (CPU_IRQ = 1)
 
-extern UWORD CPU_regPC;
-extern UBYTE CPU_regA;
-extern UBYTE CPU_regP;
-extern UBYTE CPU_regS;
-extern UBYTE CPU_regY;
-extern UBYTE CPU_regX;
+/* Transitional bridge (Option C refactor): the CPU register globals are aliased
+   to the default instance's CPU state so the tree stays buildable during the
+   incremental migration. Modules that have been migrated use inst->cpu directly;
+   CPU_GO()/CPU_NMI()/CPU_Reset() redefine these names to the instance they
+   operate on (see cpu.c). */
+#define CPU_regPC (Atari800_default->cpu.regPC)
+#define CPU_regA  (Atari800_default->cpu.regA)
+#define CPU_regP  (Atari800_default->cpu.regP)
+#define CPU_regS  (Atari800_default->cpu.regS)
+#define CPU_regY  (Atari800_default->cpu.regY)
+#define CPU_regX  (Atari800_default->cpu.regX)
 
 #define CPU_SetN CPU_regP |= CPU_N_FLAG
 #define CPU_ClrN CPU_regP &= (~CPU_N_FLAG)
@@ -71,24 +77,28 @@ extern UBYTE CPU_regX;
 #define CPU_SetC CPU_regP |= CPU_C_FLAG
 #define CPU_ClrC CPU_regP &= (~CPU_C_FLAG)
 
-extern UBYTE CPU_IRQ;
+#define CPU_IRQ (Atari800_default->cpu.IRQ)
 
-extern void (*CPU_rts_handler)(void);
+#define CPU_rts_handler (Atari800_default->cpu.rts_handler)
 
-extern UBYTE CPU_cim_encountered;
+#define CPU_cim_encountered (Atari800_default->cpu.cim_encountered)
 
 #define CPU_REMEMBER_PC_STEPS 64
-extern UWORD CPU_remember_PC[CPU_REMEMBER_PC_STEPS];
-extern UBYTE CPU_remember_op[CPU_REMEMBER_PC_STEPS][3];
-extern unsigned int CPU_remember_PC_curpos;
-extern int CPU_remember_xpos[CPU_REMEMBER_PC_STEPS];
+#ifdef MONITOR_BREAK
+#define CPU_remember_PC (Atari800_default->cpu.remember_PC)
+#define CPU_remember_op (Atari800_default->cpu.remember_op)
+#define CPU_remember_PC_curpos (Atari800_default->cpu.remember_PC_curpos)
+#define CPU_remember_xpos (Atari800_default->cpu.remember_xpos)
+#endif
 
 #define CPU_REMEMBER_JMP_STEPS 16
-extern UWORD CPU_remember_JMP[CPU_REMEMBER_JMP_STEPS];
-extern unsigned int CPU_remember_jmp_curpos;
+#ifdef MONITOR_BREAK
+#define CPU_remember_JMP (Atari800_default->cpu.remember_JMP)
+#define CPU_remember_jmp_curpos (Atari800_default->cpu.remember_jmp_curpos)
+#endif
 
 #ifdef MONITOR_PROFILE
-extern int CPU_instruction_count[256];
+#define CPU_instruction_count (Atari800_default->cpu.instruction_count)
 #endif
 
 #endif /* CPU_H_ */

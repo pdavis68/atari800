@@ -33,6 +33,7 @@
 #include "cpu.h"
 #include "gtia.h"
 #include "log.h"
+#include "instance.h"
 #include "memory.h"
 #include "platform.h"
 #include "pokey.h"
@@ -51,7 +52,75 @@
 #define LCHOP 3			/* do not build leftmost 0..3 characters in wide mode */
 #define RCHOP 3			/* do not build rightmost 0..3 characters in wide mode */
 
-int ANTIC_break_ypos = 999;
+/* Transitional Option C bridge: the per-instance ANTIC state lives in
+   ANTIC_state_t (instance.h). Within antic.c the legacy global names are
+   aliases into the file-scope context pointer `A`, which is pinned to the
+   default instance until callers pass an instance explicitly. */
+static ANTIC_state_t *A;
+#undef ANTIC_CHACTL
+#undef ANTIC_CHBASE
+#undef ANTIC_dlist
+#undef ANTIC_DMACTL
+#undef ANTIC_HSCROL
+#undef ANTIC_NMIEN
+#undef ANTIC_NMIST
+#undef ANTIC_PMBASE
+#undef ANTIC_VSCROL
+#undef ANTIC_break_ypos
+#undef ANTIC_ypos
+#undef ANTIC_wsync_halt
+#undef ANTIC_xpos
+#undef ANTIC_xpos_limit
+#undef ANTIC_screenline_cpu_clock
+#undef ANTIC_artif_mode
+#undef ANTIC_artif_new
+#undef ANTIC_PENH_input
+#undef ANTIC_PENV_input
+#undef ANTIC_xe_ptr
+#undef ANTIC_player_dma_enabled
+#undef ANTIC_missile_dma_enabled
+#undef ANTIC_player_gra_enabled
+#undef ANTIC_missile_gra_enabled
+#undef ANTIC_player_flickering
+#undef ANTIC_missile_flickering
+#undef ANTIC_delayed_wsync
+#undef ANTIC_cur_screen_pos
+#undef ANTIC_pal_blending
+
+/* Pin the context to the default instance at each public entry point
+   (transitional; removed once callers pass Atari800_Instance explicitly). */
+#define ANTIC_SET_CTX() ((void) (A = &Atari800_default->antic))
+#define ANTIC_CHACTL   (Atari800_default->antic.CHACTL)
+#define ANTIC_CHBASE   (Atari800_default->antic.CHBASE)
+#define ANTIC_dlist    (Atari800_default->antic.dlist)
+#define ANTIC_DMACTL   (Atari800_default->antic.DMACTL)
+#define ANTIC_HSCROL   (Atari800_default->antic.HSCROL)
+#define ANTIC_NMIEN    (Atari800_default->antic.NMIEN)
+#define ANTIC_NMIST    (Atari800_default->antic.NMIST)
+#define ANTIC_PMBASE   (Atari800_default->antic.PMBASE)
+#define ANTIC_VSCROL   (Atari800_default->antic.VSCROL)
+#define ANTIC_break_ypos (Atari800_default->antic.break_ypos)
+#define ANTIC_ypos     (Atari800_default->antic.ypos)
+#define ANTIC_wsync_halt (Atari800_default->antic.wsync_halt)
+#define ANTIC_xpos     (Atari800_default->antic.xpos)
+#define ANTIC_xpos_limit (Atari800_default->antic.xpos_limit)
+#define ANTIC_screenline_cpu_clock (Atari800_default->antic.screenline_cpu_clock)
+#define ANTIC_artif_mode (Atari800_default->antic.artif_mode)
+#define ANTIC_artif_new  (Atari800_default->antic.artif_new)
+#define ANTIC_PENH_input (Atari800_default->antic.PENH_input)
+#define ANTIC_PENV_input (Atari800_default->antic.PENV_input)
+#define ANTIC_xe_ptr   (Atari800_default->antic.xe_ptr)
+#define ANTIC_player_dma_enabled   (Atari800_default->antic.player_dma_enabled)
+#define ANTIC_missile_dma_enabled  (Atari800_default->antic.missile_dma_enabled)
+#define ANTIC_player_gra_enabled   (Atari800_default->antic.player_gra_enabled)
+#define ANTIC_missile_gra_enabled  (Atari800_default->antic.missile_gra_enabled)
+#define ANTIC_player_flickering    (Atari800_default->antic.player_flickering)
+#define ANTIC_missile_flickering   (Atari800_default->antic.missile_flickering)
+#define ANTIC_delayed_wsync  (Atari800_default->antic.delayed_wsync)
+#define ANTIC_cur_screen_pos (Atari800_default->antic.cur_screen_pos)
+#ifndef NO_SIMPLE_PAL_BLENDING
+#define ANTIC_pal_blending (Atari800_default->antic.pal_blending)
+#endif
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 static int gtia_bug_active = FALSE; /* The GTIA bug mode is active */
 #endif
@@ -62,16 +131,12 @@ static void update_scanline_invert(void);
 static void update_scanline_blank(void);
 const int *ANTIC_cpu2antic_ptr;
 const int *ANTIC_antic2cpu_ptr;
-int ANTIC_delayed_wsync = 0;
 static int dmactl_changed = 0;
 static UBYTE delayed_DMACTL;
 static int draw_antic_ptr_changed = 0;
 static UBYTE need_load;
 static int dmactl_bug_chdata;
 #endif /* NEW_CYCLE_EXACT */
-#ifndef NO_SIMPLE_PAL_BLENDING
-int ANTIC_pal_blending = 0;
-#endif /* NO_SIMPLE_PAL_BLENDING */
 
 /* Video memory access is hidden behind these macros. It allows to track dirty video memory
    to improve video system performance */
@@ -183,11 +248,13 @@ static UBYTE *scratchFillLimit;
 
 void ANTIC_VideoMemset(UBYTE *ptr, UBYTE val, ULONG size)
 {
+	ANTIC_SET_CTX();
 	FILL_VIDEO(ptr, val, size);
 }
 
 void ANTIC_VideoPutByte(UBYTE *ptr, UBYTE val)
 {
+	ANTIC_SET_CTX();
 	WRITE_VIDEO_BYTE(ptr, val);
 }
 
@@ -221,15 +288,6 @@ void ANTIC_VideoPutByte(UBYTE *ptr, UBYTE val)
 
 /* ANTIC Registers --------------------------------------------------------- */
 
-UBYTE ANTIC_DMACTL;
-UBYTE ANTIC_CHACTL;
-UWORD ANTIC_dlist;
-UBYTE ANTIC_HSCROL;
-UBYTE ANTIC_VSCROL;
-UBYTE ANTIC_PMBASE;
-UBYTE ANTIC_CHBASE;
-UBYTE ANTIC_NMIEN;
-UBYTE ANTIC_NMIST;
 
 /* ANTIC Memory ------------------------------------------------------------ */
 
@@ -261,7 +319,6 @@ static UWORD *scrn_ptr;
 /* Pointer to 16 KB seen by ANTIC in 0x4000-0x7fff.
    If it's the same what the CPU sees (and what's in MEMORY_mem[0x4000..0x7fff],
    then NULL. */
-const UBYTE *ANTIC_xe_ptr = NULL;
 
 /* ANTIC Timing --------------------------------------------------------------
 
@@ -409,7 +466,6 @@ These are all cases:
 #define SCR_C	28
 #define VSCOF_C	112
 
-unsigned int ANTIC_screenline_cpu_clock = 0;
 
 #ifdef NEW_CYCLE_EXACT
 #define UPDATE_DMACTL do{if (dmactl_changed) { \
@@ -429,20 +485,15 @@ unsigned int ANTIC_screenline_cpu_clock = 0;
 		draw_antic_ptr = draw_antic_table[GTIA_PRIOR >> 6][anticmode];\
 		gtia_bug_active = FALSE;\
 	}}while(0)
-#define GOEOL_CYCLE_EXACT  CPU_GO(ANTIC_antic2cpu_ptr[ANTIC_LINE_C]); \
+#define GOEOL_CYCLE_EXACT  CPU_GO(Atari800_default, ANTIC_antic2cpu_ptr[ANTIC_LINE_C]); \
 	ANTIC_xpos = ANTIC_cpu2antic_ptr[ANTIC_xpos]; \
 	ANTIC_xpos -= ANTIC_LINE_C; \
 	ANTIC_screenline_cpu_clock += ANTIC_LINE_C; \
 	ANTIC_ypos++; \
 	GTIA_UpdatePmplColls();
-#define GOEOL CPU_GO(ANTIC_LINE_C); ANTIC_xpos -= ANTIC_LINE_C; ANTIC_screenline_cpu_clock += ANTIC_LINE_C; UPDATE_DMACTL; ANTIC_ypos++; UPDATE_GTIA_BUG
+#define GOEOL CPU_GO(Atari800_default, ANTIC_LINE_C); ANTIC_xpos -= ANTIC_LINE_C; ANTIC_screenline_cpu_clock += ANTIC_LINE_C; UPDATE_DMACTL; ANTIC_ypos++; UPDATE_GTIA_BUG
 #define OVERSCREEN_LINE	ANTIC_xpos += ANTIC_DMAR; GOEOL
 
-int ANTIC_xpos = 0;
-int ANTIC_xpos_limit;
-int ANTIC_wsync_halt = FALSE;
-
-int ANTIC_ypos;						/* Line number - lines 8..247 are on screen */
 
 /* Timing in first line of modes 2-5
 In these modes ANTIC takes more bytes than cycles. Despite this, it would be
@@ -458,8 +509,6 @@ contains difference between bytes taken and cycles taken plus before_cycles. */
 
 static UBYTE PENH;
 static UBYTE PENV;
-UBYTE ANTIC_PENH_input = 0x00;
-UBYTE ANTIC_PENV_input = 0xff;
 
 #ifndef BASIC
 
@@ -681,7 +730,6 @@ static UWORD hires_lookup_m[128];
 #define hires_mask(x)	hires_lookup_m[(x) >> 1]
 
 #ifndef USE_COLOUR_TRANSLATION_TABLE
-int ANTIC_artif_new = FALSE; /* New type of artifacting */
 UWORD ANTIC_hires_lookup_l[128];	/* accessed in gtia.c */
 #define hires_lum(x)	ANTIC_hires_lookup_l[(x) >> 1]
 #endif
@@ -695,12 +743,6 @@ UWORD ANTIC_hires_lookup_l[128];	/* accessed in gtia.c */
 #define PF_COLLS(x) (((UBYTE *) &ANTIC_cl)[(x) + L_COLLS])
 
 static int singleline;
-int ANTIC_player_dma_enabled;
-int ANTIC_player_gra_enabled;
-int ANTIC_missile_dma_enabled;
-int ANTIC_missile_gra_enabled;
-int ANTIC_player_flickering;
-int ANTIC_missile_flickering;
 
 static UWORD pmbase_s;
 static UWORD pmbase_d;
@@ -879,7 +921,6 @@ static void pmg_dma(void)
 
 /* Artifacting ------------------------------------------------------------ */
 
-int ANTIC_artif_mode;
 
 static UWORD art_lookup_new[64];
 static UWORD art_colour1_new;
@@ -948,6 +989,7 @@ static void setup_art_colours(void)
 
 int ANTIC_Initialise(int *argc, char *argv[])
 {
+	ANTIC_SET_CTX();
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	int i, j;
 
@@ -1016,6 +1058,7 @@ int ANTIC_Initialise(int *argc, char *argv[])
 
 void ANTIC_Reset(void)
 {
+	ANTIC_SET_CTX();
 	ANTIC_NMIEN = 0x00;
 	ANTIC_NMIST = 0x1f;
 	ANTIC_PutByte(ANTIC_OFFSET_DMACTL, 0);
@@ -2643,6 +2686,7 @@ static void draw_antic_0_dmactl_bug(int nchars, const UBYTE *antic_memptr, UWORD
 
 void ANTIC_UpdateArtifacting(void)
 {
+	ANTIC_SET_CTX();
 #define ART_BROWN 0
 #define ART_BLUE 1
 #define ART_DARK_BROWN 2
@@ -2764,6 +2808,7 @@ void ANTIC_UpdateArtifacting(void)
 
 UBYTE ANTIC_GetDLByte(UWORD *paddr)
 {
+	ANTIC_SET_CTX();
 	int addr = *paddr;
 	UBYTE result;
 	if (ANTIC_xe_ptr != NULL && addr < 0x8000 && addr >= 0x4000)
@@ -2779,6 +2824,7 @@ UBYTE ANTIC_GetDLByte(UWORD *paddr)
 
 UWORD ANTIC_GetDLWord(UWORD *paddr)
 {
+	ANTIC_SET_CTX();
 	UBYTE lsb = ANTIC_GetDLByte(paddr);
 #if !defined(BASIC) && !defined(CURSES_BASIC)
 	if (ANTIC_player_flickering && ((GTIA_VDELAY & 0x80) == 0 || ANTIC_ypos & 1))
@@ -2838,9 +2884,6 @@ static void antic_load(void)
 #endif
 }
 
-#ifdef NEW_CYCLE_EXACT
-int ANTIC_cur_screen_pos = ANTIC_NOT_DRAWING;
-#endif
 
 #ifdef USE_CURSES
 static int scanlines_to_curses_display = 0;
@@ -2849,6 +2892,7 @@ static int scanlines_to_curses_display = 0;
 /* This function emulates one frame drawing screen at Screen_atari */
 void ANTIC_Frame(int draw_display)
 {
+	ANTIC_SET_CTX();
 	static const UBYTE mode_type[32] = {
 		NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL0, NORMAL1, NORMAL1,
 		NORMAL2, NORMAL2, NORMAL1, NORMAL1, NORMAL1, NORMAL0, NORMAL0, NORMAL0,
@@ -2949,7 +2993,7 @@ void ANTIC_Frame(int draw_display)
 				lastline = normal_lastline[anticmode];
 				if (IR & 0x20) {
 					if (!vscrol_flag) {
-						CPU_GO(VSCON_C);
+						CPU_GO(Atari800_default, VSCON_C);
 						dctr = ANTIC_VSCROL;
 						vscrol_flag = TRUE;
 					}
@@ -3014,16 +3058,16 @@ void ANTIC_Frame(int draw_display)
 			ANTIC_cur_screen_pos = LBORDER_START;
 			ANTIC_xpos = ANTIC_antic2cpu_ptr[ANTIC_xpos]; /* convert antic to cpu(need for WSYNC) */
 			if (vscrol_off && (IR & 0x80))
-				CPU_GO(ANTIC_antic2cpu_ptr[ANTIC_NMIST_C - 2]);
+				CPU_GO(Atari800_default, ANTIC_antic2cpu_ptr[ANTIC_NMIST_C - 2]);
 			if (dctr == lastline) {
 				if (no_jvb)
 					need_dl = TRUE;
 				if (IR & 0x80) {
-					CPU_GO(ANTIC_antic2cpu_ptr[ANTIC_NMIST_C]);
+					CPU_GO(Atari800_default, ANTIC_antic2cpu_ptr[ANTIC_NMIST_C]);
 					ANTIC_NMIST = 0x9f;
 					if (ANTIC_NMIEN & 0x80) {
-						CPU_GO(ANTIC_antic2cpu_ptr[ANTIC_NMI_C]);
-						CPU_NMI();
+						CPU_GO(Atari800_default, ANTIC_antic2cpu_ptr[ANTIC_NMI_C]);
+						CPU_NMI(Atari800_default);
 					}
 				}
 			}
@@ -3032,16 +3076,16 @@ void ANTIC_Frame(int draw_display)
 #endif /* NEW_CYCLE_EXACT */
 		{
 			if (vscrol_off && (IR & 0x80))
-				CPU_GO(ANTIC_NMIST_C - 2);
+				CPU_GO(Atari800_default, ANTIC_NMIST_C - 2);
 			if (dctr == lastline) {
 				if (no_jvb)
 					need_dl = TRUE;
 				if (IR & 0x80) {
-					CPU_GO(ANTIC_NMIST_C);
+					CPU_GO(Atari800_default, ANTIC_NMIST_C);
 					ANTIC_NMIST = 0x9f;
 					if (ANTIC_NMIEN & 0x80) {
-						CPU_GO(ANTIC_NMI_C);
-						CPU_NMI();
+						CPU_GO(Atari800_default, ANTIC_NMI_C);
+						CPU_NMI(Atari800_default);
 					}
 				}
 			}
@@ -3107,7 +3151,7 @@ void ANTIC_Frame(int draw_display)
 		if (need_load && anticmode <= 5 && ANTIC_DMACTL & 3)
 			ANTIC_xpos += before_cycles[md];
 
-		CPU_GO(SCR_C);
+		CPU_GO(Atari800_default, SCR_C);
 		GTIA_NewPmScanline();
 
 		ANTIC_xpos += ANTIC_DMAR;
@@ -3186,11 +3230,11 @@ void ANTIC_Frame(int draw_display)
 
 /* TODO: cycle-exact overscreen lines */
 	POKEY_Scanline();		/* check and generate IRQ */
-	CPU_GO(ANTIC_NMIST_C);
+	CPU_GO(Atari800_default, ANTIC_NMIST_C);
 	ANTIC_NMIST = 0x5f;				/* Set VBLANK */
 	if (ANTIC_NMIEN & 0x40) {
-		CPU_GO(ANTIC_NMI_C);
-		CPU_NMI();
+		CPU_GO(Atari800_default, ANTIC_NMI_C);
+		CPU_NMI(Atari800_default);
 	}
 	ANTIC_xpos += ANTIC_DMAR;
 	GOEOL;
@@ -3208,6 +3252,7 @@ void ANTIC_Frame(int draw_display)
 position, when a change was made to a display register during drawing */
 void ANTIC_UpdateScanline(void)
 {
+	ANTIC_SET_CTX();
 	int actual_xpos = ANTIC_cpu2antic_ptr[ANTIC_xpos];
         int oldpos = ANTIC_cur_screen_pos;
 	ANTIC_cur_screen_pos = actual_xpos * 2 - 37;
@@ -3220,6 +3265,7 @@ between mode changes */
 the new mode nor the old mode, which occur between mode changes */
 void ANTIC_UpdateScanlinePrior(UBYTE byte)
 {
+	ANTIC_SET_CTX();
 	int actual_xpos = ANTIC_cpu2antic_ptr[ANTIC_xpos];
 	int prior_mode_adj = 2;
 	int oldpos = ANTIC_cur_screen_pos;
@@ -3510,6 +3556,7 @@ void draw_partial_scanline(int l, int r)
 
 UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects)
 {
+	ANTIC_SET_CTX();
 	switch (addr & 0xf) {
 	case ANTIC_OFFSET_VCOUNT:
 		if (ANTIC_XPOS < ANTIC_LINE_C)
@@ -3533,6 +3580,7 @@ UBYTE ANTIC_GetByte(UWORD addr, int no_side_effects)
 /* GTIA calls it on write to PRIOR */
 void ANTIC_SetPrior(UBYTE byte)
 {
+	ANTIC_SET_CTX();
 	if ((byte ^ GTIA_PRIOR) & 0x0f) {
 #ifdef USE_COLOUR_TRANSLATION_TABLE
 		UBYTE col = 0;
@@ -3687,6 +3735,7 @@ void ANTIC_SetPrior(UBYTE byte)
 
 void ANTIC_PutByte(UWORD addr, UBYTE byte)
 {
+	ANTIC_SET_CTX();
 	switch (addr & 0xf) {
 	case ANTIC_OFFSET_DLISTL:
 		ANTIC_dlist = (ANTIC_dlist & 0xff00) | byte;
@@ -4096,6 +4145,7 @@ case we have ANTIC_cpu2antic_ptr[ANTIC_WSYNC_C+1]-1 = 8 and in the 2nd =12  */
 
 void ANTIC_StateSave(void)
 {
+	ANTIC_SET_CTX();
 	STATESAV_TAG(antic);
 	StateSav_SaveUBYTE(&ANTIC_DMACTL, 1);
 	StateSav_SaveUBYTE(&ANTIC_CHACTL, 1);
@@ -4122,6 +4172,7 @@ void ANTIC_StateSave(void)
 
 void ANTIC_StateRead(void)
 {
+	ANTIC_SET_CTX();
 	StateSav_ReadUBYTE(&ANTIC_DMACTL, 1);
 	StateSav_ReadUBYTE(&ANTIC_CHACTL, 1);
 	StateSav_ReadUBYTE(&ANTIC_HSCROL, 1);

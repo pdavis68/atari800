@@ -3788,7 +3788,7 @@ int MONITOR_Run(void)
 
 	addr = CPU_regPC;
 
-	CPU_GetStatus();
+	CPU_GetStatus(Atari800_default);
 
 	if (CPU_cim_encountered) {
 		printf("(CIM encountered)\n");

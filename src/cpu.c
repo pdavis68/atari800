@@ -81,30 +81,44 @@
 #include "libatari800/cpu_crash.h"
 #endif
 
-/* For Atari Basic loader */
-void (*CPU_rts_handler)(void) = NULL;
+/* Option C refactor: route memory access through the instance context.
+   The memory accessor macros are redefined to use the local `mem` pointer
+   (a MEMORY_state_t *) that is in scope inside CPU_GO() and CPU_NMI().
+   The legacy global macros from memory.h are overridden here so the decoder
+   body does not need to be rewritten at every call site. */
+#undef MEMORY_dGetByte
+#undef MEMORY_dPutByte
+#undef MEMORY_dGetWord
+#undef MEMORY_dPutWord
+#undef MEMORY_dGetWordAligned
+#undef MEMORY_dPutWordAligned
+#undef MEMORY_GetByte
+#undef MEMORY_PutByte
+#undef MEMORY_SafeGetByte
+#undef MEMORY_attrib
+#undef MEMORY_mem
+#define MEMORY_dGetByte(x)            MEMORY_dGetByteCtx(mem, (x))
+#define MEMORY_dPutByte(x, y)         MEMORY_dPutByteCtx(mem, (x), (y))
+#define MEMORY_dGetWord(x)            MEMORY_dGetWordCtx(mem, (x))
+#define MEMORY_dPutWord(x, y)         MEMORY_dPutWordCtx(mem, (x), (y))
+#define MEMORY_dGetWordAligned(x)     MEMORY_dGetWordAlignedCtx(mem, (x))
+#define MEMORY_dPutWordAligned(x, y)  MEMORY_dPutWordAlignedCtx(mem, (x), (y))
+#define MEMORY_GetByte(addr)          MEMORY_GetByteCtx(mem, (addr), FALSE)
+#define MEMORY_PutByte(addr, byte)    MEMORY_PutByteCtx(mem, (addr), (byte))
+#define MEMORY_SafeGetByte(addr)      MEMORY_SafeGetByteCtx(mem, (addr))
+#define MEMORY_attrib                 (mem->attrib)
+#define MEMORY_mem                    (mem->mem)
 
-/* 6502 instruction profiling */
-#ifdef MONITOR_PROFILE
-int CPU_instruction_count[256];
-#endif
+/* The 6502 registers and CPU state now live in the instance's CPU_state_t
+   (see instance.h). The legacy global names (CPU_regPC, CPU_IRQ, ...) are
+   aliased to the default instance in cpu.h; CPU_GO()/CPU_NMI()/CPU_Reset()
+   redefine them to the instance they operate on. */
 
-/* Execution history */
 #ifdef MONITOR_BREAK
-UWORD CPU_remember_PC[CPU_REMEMBER_PC_STEPS];
-UBYTE CPU_remember_op[CPU_REMEMBER_PC_STEPS][3];
-unsigned int CPU_remember_PC_curpos = 0;
-int CPU_remember_xpos[CPU_REMEMBER_PC_STEPS];
-UWORD CPU_remember_JMP[CPU_REMEMBER_JMP_STEPS];
-unsigned int CPU_remember_jmp_curpos = 0;
 #define INC_RET_NESTING MONITOR_ret_nesting++
 #else /* MONITOR_BREAK */
 #define INC_RET_NESTING
 #endif /* MONITOR_BREAK */
-
-UBYTE CPU_cim_encountered = FALSE;
-UBYTE CPU_IRQ;
-UBYTE CPU_delayed_nmi;
 
 #if defined(NEW_CYCLE_EXACT) && !defined(FALCON_CPUASM)
 /* A POKEY timer IRQ fired mid-instruction and is to be taken at the next
@@ -194,17 +208,14 @@ static int service_pokey_irq;
 #define RMW_GetByte(x, addr) x = MEMORY_GetByte(addr);
 #endif /* NEW_CYCLE_EXACT */
 
-/* 6502 registers. */
-UWORD CPU_regPC;
-UBYTE CPU_regA;
-UBYTE CPU_regX;
-UBYTE CPU_regY;
-UBYTE CPU_regP;						/* Processor Status Byte (Partial) */
-UBYTE CPU_regS;
+/* 6502 registers now live in the instance's CPU_state_t (see instance.h).
+   CPU_GO() redefines CPU_regPC/CPU_regS/CPU_regA/CPU_regX/CPU_regY to the
+   instance it operates on, so the transfer macros below use inst->cpu. */
 
-/* Transfer 6502 registers between global variables and local variables inside CPU_GO() */
-#define UPDATE_GLOBAL_REGS  CPU_regPC = GET_PC(); CPU_regS = S; CPU_regA = A; CPU_regX = X; CPU_regY = Y
-#define UPDATE_LOCAL_REGS   SET_PC(CPU_regPC); S = CPU_regS; A = CPU_regA; X = CPU_regX; Y = CPU_regY
+/* Transfer 6502 registers between the instance's CPU state and the local
+   variables inside CPU_GO() */
+#define UPDATE_GLOBAL_REGS  inst->cpu.regPC = GET_PC(); inst->cpu.regS = S; inst->cpu.regA = A; inst->cpu.regX = X; inst->cpu.regY = Y
+#define UPDATE_LOCAL_REGS   SET_PC(inst->cpu.regPC); S = inst->cpu.regS; A = inst->cpu.regA; X = inst->cpu.regX; Y = inst->cpu.regY
 
 /* 6502 flags local to this module */
 static UBYTE N;					/* bit7 set => N flag set */
@@ -215,23 +226,23 @@ static UBYTE Z;					/* zero     => Z flag set */
 static UBYTE C;					/* must be 0 or 1 */
 /* B, D, I are always in CPU_regP */
 
-void CPU_GetStatus(void)
+void CPU_GetStatus(Atari800_Instance *inst)
 {
 #ifndef NO_V_FLAG_VARIABLE
-	CPU_regP = (N & 0x80) + (V ? 0x40 : 0) + (CPU_regP & 0x3c) + ((Z == 0) ? 0x02 : 0) + C;
+	inst->cpu.regP = (N & 0x80) + (V ? 0x40 : 0) + (inst->cpu.regP & 0x3c) + ((Z == 0) ? 0x02 : 0) + C;
 #else
-	CPU_regP = (N & 0x80) + (CPU_regP & 0x7c) + ((Z == 0) ? 0x02 : 0) + C;
+	inst->cpu.regP = (N & 0x80) + (inst->cpu.regP & 0x7c) + ((Z == 0) ? 0x02 : 0) + C;
 #endif
 }
 
-void CPU_PutStatus(void)
+void CPU_PutStatus(Atari800_Instance *inst)
 {
-	N = CPU_regP;
+	N = inst->cpu.regP;
 #ifndef NO_V_FLAG_VARIABLE
-	V = (CPU_regP & 0x40);
+	V = (inst->cpu.regP & 0x40);
 #endif
-	Z = (CPU_regP & 0x02) ^ 0x02;
-	C = (CPU_regP & 0x01);
+	Z = (inst->cpu.regP & 0x02) ^ 0x02;
+	C = (inst->cpu.regP & 0x01);
 }
 
 /* Addressing modes */
@@ -371,15 +382,26 @@ void CPU_PutStatus(void)
 #endif /* FALCON_CPUASM */
 
 /* Triggers a Non-Maskable Interrupt */
-void CPU_NMI(void)
+void CPU_NMI(Atari800_Instance *inst)
 {
 	UBYTE S;
 #ifndef FALCON_CPUASM
 	UBYTE data;
+	MEMORY_state_t *mem = &inst->memory;
 #endif
 
+	/* Route the CPU register names to this instance's CPU state. */
+#undef CPU_delayed_nmi
+#undef CPU_regS
+#undef CPU_regPC
+#undef CPU_regP
+#define CPU_delayed_nmi (inst->cpu.delayed_nmi)
+#define CPU_regS (inst->cpu.regS)
+#define CPU_regPC (inst->cpu.regPC)
+#define CPU_regP (inst->cpu.regP)
+
 	if(CPU_delayed_nmi > 0)
-		CPU_GO(ANTIC_xpos_limit + CPU_delayed_nmi);
+		CPU_GO(inst, ANTIC_xpos_limit + CPU_delayed_nmi);
 
 	S = CPU_regS;
 	PHW(CPU_regPC);
@@ -423,9 +445,9 @@ void CPU_NMI(void)
 #endif
 #define DO_BREAK \
 	UPDATE_GLOBAL_REGS; \
-	CPU_GetStatus(); \
+	CPU_GetStatus(inst); \
 	ENTER_MONITOR; \
-	CPU_PutStatus(); \
+	CPU_PutStatus(inst); \
 	UPDATE_LOCAL_REGS;
 
 
@@ -457,8 +479,40 @@ static const int cycles[256] =
 #ifndef NO_GOTO
 __extension__ /* suppress -ansi -pedantic warnings */
 #endif
-void CPU_GO(int limit)
+void CPU_GO(Atari800_Instance *inst, int limit)
 {
+	MEMORY_state_t *mem = &inst->memory;
+
+	/* Route the CPU register names to this instance's CPU state so the decoder
+	   body operates on the instance being emulated. */
+#undef CPU_regP
+#undef CPU_IRQ
+#undef CPU_rts_handler
+#undef CPU_cim_encountered
+#undef CPU_delayed_nmi
+#define CPU_regP (inst->cpu.regP)
+#define CPU_IRQ (inst->cpu.IRQ)
+#define CPU_rts_handler (inst->cpu.rts_handler)
+#define CPU_cim_encountered (inst->cpu.cim_encountered)
+#define CPU_delayed_nmi (inst->cpu.delayed_nmi)
+#ifdef MONITOR_BREAK
+#undef CPU_remember_PC
+#undef CPU_remember_op
+#undef CPU_remember_PC_curpos
+#undef CPU_remember_xpos
+#undef CPU_remember_JMP
+#undef CPU_remember_jmp_curpos
+#define CPU_remember_PC (inst->cpu.remember_PC)
+#define CPU_remember_op (inst->cpu.remember_op)
+#define CPU_remember_PC_curpos (inst->cpu.remember_PC_curpos)
+#define CPU_remember_xpos (inst->cpu.remember_xpos)
+#define CPU_remember_JMP (inst->cpu.remember_JMP)
+#define CPU_remember_jmp_curpos (inst->cpu.remember_jmp_curpos)
+#endif
+#ifdef MONITOR_PROFILE
+#undef CPU_instruction_count
+#define CPU_instruction_count (inst->cpu.instruction_count)
+#endif
 #ifdef NO_GOTO
 #define OPCODE_ALIAS(code)	case 0x##code:
 #define DONE				break
@@ -2297,9 +2351,9 @@ void CPU_GO(int limit)
 	OPCODE(d2)				/* ESCRTS #ab (CIM) - on Atari is here instruction CIM [unofficial] !RS! */
 		data = IMMEDIATE;
 		UPDATE_GLOBAL_REGS;
-		CPU_GetStatus();
+		CPU_GetStatus(inst);
 		ESC_Run(data);
-		CPU_PutStatus();
+		CPU_PutStatus(inst);
 		UPDATE_LOCAL_REGS;
 		data = PL;
 		SET_PC((PL << 8) + data + 1);
@@ -2313,9 +2367,9 @@ void CPU_GO(int limit)
 		/* OPCODE(ff: ESC #ab - opcode FF is now used for INS [unofficial] instruction !RS! */
 		data = IMMEDIATE;
 		UPDATE_GLOBAL_REGS;
-		CPU_GetStatus();
+		CPU_GetStatus(inst);
 		ESC_Run(data);
-		CPU_PutStatus();
+		CPU_PutStatus(inst);
 		UPDATE_LOCAL_REGS;
 		DONE;
 
@@ -2343,7 +2397,7 @@ void CPU_GO(int limit)
 	/* OPCODE(f2) Used for ESC #ab (CIM) */
 		PC--;
 		UPDATE_GLOBAL_REGS;
-		CPU_GetStatus();
+		CPU_GetStatus(inst);
 
 #ifdef CRASH_MENU
 		UI_crash_address = GET_PC();
@@ -2361,7 +2415,7 @@ void CPU_GO(int limit)
 #endif /* LIBATARI800 */
 #endif /* CRASH_MENU */
 
-		CPU_PutStatus();
+		CPU_PutStatus(inst);
 		UPDATE_LOCAL_REGS;
 		DONE;
 
@@ -2487,8 +2541,24 @@ void CPU_GO(int limit)
 	UPDATE_GLOBAL_REGS;
 }
 
-void CPU_Reset(void)
+void CPU_Reset(Atari800_Instance *inst)
 {
+	MEMORY_state_t *mem = &inst->memory;
+
+	/* Route the CPU register names to this instance's CPU state. */
+#undef CPU_IRQ
+#undef CPU_regP
+#undef CPU_regS
+#undef CPU_regPC
+#define CPU_IRQ (inst->cpu.IRQ)
+#define CPU_regP (inst->cpu.regP)
+#define CPU_regS (inst->cpu.regS)
+#define CPU_regPC (inst->cpu.regPC)
+#ifdef MONITOR_PROFILE
+#undef CPU_instruction_count
+#define CPU_instruction_count (inst->cpu.instruction_count)
+#endif
+
 #ifdef MONITOR_PROFILE
 	memset(CPU_instruction_count, 0, sizeof(CPU_instruction_count));
 #endif
@@ -2496,47 +2566,47 @@ void CPU_Reset(void)
 	CPU_IRQ = 0;
 
 	CPU_regP = 0x34;				/* The unused bit is always 1, I flag set! */
-	CPU_PutStatus();	/* Make sure flags are all updated */
+	CPU_PutStatus(inst);	/* Make sure flags are all updated */
 	CPU_regS = 0xff;
 	CPU_regPC = MEMORY_dGetWordAligned(0xfffc);
 }
 
 #if !defined(BASIC) && !defined(ASAP)
 
-void CPU_StateSave(UBYTE SaveVerbose)
+void CPU_StateSave(Atari800_Instance *inst, UBYTE SaveVerbose)
 {
 	STATESAV_TAG(cpu);
-	StateSav_SaveUBYTE(&CPU_regA, 1);
+	StateSav_SaveUBYTE(&inst->cpu.regA, 1);
 
-	CPU_GetStatus();	/* Make sure flags are all updated */
-	StateSav_SaveUBYTE(&CPU_regP, 1);
+	CPU_GetStatus(inst);	/* Make sure flags are all updated */
+	StateSav_SaveUBYTE(&inst->cpu.regP, 1);
 
-	StateSav_SaveUBYTE(&CPU_regS, 1);
-	StateSav_SaveUBYTE(&CPU_regX, 1);
-	StateSav_SaveUBYTE(&CPU_regY, 1);
-	StateSav_SaveUBYTE(&CPU_IRQ, 1);
+	StateSav_SaveUBYTE(&inst->cpu.regS, 1);
+	StateSav_SaveUBYTE(&inst->cpu.regX, 1);
+	StateSav_SaveUBYTE(&inst->cpu.regY, 1);
+	StateSav_SaveUBYTE(&inst->cpu.IRQ, 1);
 
-	MEMORY_StateSave(SaveVerbose);
+	MEMORY_StateSaveCtx(inst, SaveVerbose);
 
 	STATESAV_TAG(pc);
-	StateSav_SaveUWORD(&CPU_regPC, 1);
+	StateSav_SaveUWORD(&inst->cpu.regPC, 1);
 }
 
-void CPU_StateRead(UBYTE SaveVerbose, UBYTE StateVersion)
+void CPU_StateRead(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE StateVersion)
 {
-	StateSav_ReadUBYTE(&CPU_regA, 1);
+	StateSav_ReadUBYTE(&inst->cpu.regA, 1);
 
-	StateSav_ReadUBYTE(&CPU_regP, 1);
-	CPU_PutStatus();	/* Make sure flags are all updated */
+	StateSav_ReadUBYTE(&inst->cpu.regP, 1);
+	CPU_PutStatus(inst);	/* Make sure flags are all updated */
 
-	StateSav_ReadUBYTE(&CPU_regS, 1);
-	StateSav_ReadUBYTE(&CPU_regX, 1);
-	StateSav_ReadUBYTE(&CPU_regY, 1);
-	StateSav_ReadUBYTE(&CPU_IRQ, 1);
+	StateSav_ReadUBYTE(&inst->cpu.regS, 1);
+	StateSav_ReadUBYTE(&inst->cpu.regX, 1);
+	StateSav_ReadUBYTE(&inst->cpu.regY, 1);
+	StateSav_ReadUBYTE(&inst->cpu.IRQ, 1);
 
-	MEMORY_StateRead(SaveVerbose, StateVersion);
+	MEMORY_StateReadCtx(inst, SaveVerbose, StateVersion);
 
-	StateSav_ReadUWORD(&CPU_regPC, 1);
+	StateSav_ReadUWORD(&inst->cpu.regPC, 1);
 }
 
 #endif

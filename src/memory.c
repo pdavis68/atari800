@@ -44,18 +44,64 @@
 #include "statesav.h"
 #endif
 
-UBYTE MEMORY_mem[65536 + 2];
-
-int MEMORY_ram_size = 64;
+/* Transitional Option C bridge: within memory.c the legacy memory accessor
+   macros are redefined to route through the file-scope context pointer `M`
+   that each public *_Ctx() function sets from its Atari800_Instance
+   argument. All per-instance memory state now lives in MEMORY_state_t; the
+   legacy names are aliases into the context. */
+static MEMORY_state_t *M;
+#undef MEMORY_mem
+#undef MEMORY_attrib
+#undef MEMORY_readmap
+#undef MEMORY_safe_readmap
+#undef MEMORY_writemap
+#undef MEMORY_ram_size
+#undef MEMORY_xe_bank
+#undef MEMORY_selftest_enabled
+#undef MEMORY_have_basic
+#undef MEMORY_cartA0BF_enabled
+#undef MEMORY_mosaic_num_banks
+#undef MEMORY_axlon_0f_mirror
+#undef MEMORY_axlon_num_banks
+#undef MEMORY_enable_mapram
+#undef MEMORY_os
+#undef MEMORY_basic
+#undef MEMORY_xegame
+#define MEMORY_mem          (M->mem)
+#define MEMORY_attrib       (M->attrib)
+#define MEMORY_readmap      (M->readmap)
+#define MEMORY_safe_readmap (M->safe_readmap)
+#define MEMORY_writemap     (M->writemap)
+#define MEMORY_ram_size     (M->ram_size)
+#define MEMORY_xe_bank      (M->xe_bank)
+#define MEMORY_selftest_enabled (M->selftest_enabled)
+#define MEMORY_have_basic   (M->have_basic)
+#define MEMORY_cartA0BF_enabled (M->cartA0BF_enabled)
+#define MEMORY_mosaic_num_banks (M->mosaic_num_banks)
+#define MEMORY_axlon_0f_mirror  (M->axlon_0f_mirror)
+#define MEMORY_axlon_num_banks  (M->axlon_num_banks)
+#define MEMORY_enable_mapram    (M->enable_mapram)
+#define MEMORY_os           (M->os)
+#define MEMORY_basic        (M->basic)
+#define MEMORY_xegame       (M->xegame)
+#define axlon_ram           (M->axlon_ram)
+#define axlon_current_bankmask (M->axlon_current_bankmask)
+#define axlon_curbank       (M->axlon_curbank)
+#define mosaic_ram          (M->mosaic_ram)
+#define mosaic_current_num_banks (M->mosaic_current_num_banks)
+#define mosaic_curbank      (M->mosaic_curbank)
+#define atarixe_memory      (M->atarixe_memory)
+#define atarixe_memory_size (M->atarixe_memory_size)
+#define mapram_memory       (M->mapram_memory)
+#define cart809F_enabled    (M->cart809F_enabled)
+#define under_atarixl_os    (M->under_atarixl_os)
+#define under_cart809F      (M->under_cart809F)
+#define under_cartA0BF      (M->under_cartA0BF)
+#define antic_bank_under_selftest (M->antic_bank_under_selftest)
 
 #ifndef PAGED_ATTRIB
 
-UBYTE MEMORY_attrib[65536];
-
 #else /* PAGED_ATTRIB */
-
-MEMORY_rdfunc MEMORY_readmap[256];
-MEMORY_wrfunc MEMORY_writemap[256];
 
 typedef struct map_save {
 	int     code;
@@ -74,48 +120,14 @@ map_save save_map[2] = {
 
 #endif /* PAGED_ATTRIB */
 
-UBYTE MEMORY_basic[8192];
-UBYTE MEMORY_os[16384];
-UBYTE MEMORY_xegame[8192];
-
-int MEMORY_xe_bank = 0;
-int MEMORY_selftest_enabled = 0;
-
-static UBYTE under_atarixl_os[16384];
-static UBYTE under_cart809F[8192];
-static UBYTE under_cartA0BF[8192];
-
-static int cart809F_enabled = FALSE;
-int MEMORY_cartA0BF_enabled = FALSE;
-
-static UBYTE *atarixe_memory = NULL;
-static ULONG atarixe_memory_size = 0;
-
-/* RAM shadowed by Self-Test in the XE bank seen by ANTIC, when ANTIC/CPU
-   separate XE access is active. */
-static UBYTE antic_bank_under_selftest[0x800];
-
-int MEMORY_have_basic = FALSE; /* Atari BASIC image has been successfully read (Atari 800 only) */
+/* Atari BASIC image has been successfully read (Atari 800 only) */
 
 /* Axlon and Mosaic RAM expansions for Atari 400/800 only */
 static void MosaicPutByte(UWORD addr, UBYTE byte);
 static UBYTE MosaicGetByte(UWORD addr, int no_side_effects);
 static void AxlonPutByte(UWORD addr, UBYTE byte);
 static UBYTE AxlonGetByte(UWORD addr, int no_side_effects);
-static UBYTE *axlon_ram = NULL;
-static int axlon_current_bankmask = 0;
-int axlon_curbank = 0;
-int MEMORY_axlon_num_banks = 0x00;
-int MEMORY_axlon_0f_mirror = FALSE; /* The real Axlon had a mirror bank register at 0x0fc0-0x0fff, compatibles did not*/
-static UBYTE *mosaic_ram = NULL;
-static int mosaic_current_num_banks = 0;
-static int mosaic_curbank = 0x3f;
-int MEMORY_mosaic_num_banks = 0;
-
-int MEMORY_enable_mapram = FALSE;
-
-/* Buffer for storing of MapRAM memory. */
-static UBYTE *mapram_memory = NULL;
+/* The real Axlon had a mirror bank register at 0x0fc0-0x0fff, compatibles did not */
 
 static void alloc_axlon_memory(void){
 	if (MEMORY_axlon_num_banks > 0 && Atari800_machine_type == Atari800_MACHINE_800) {
@@ -194,8 +206,9 @@ int MEMORY_SizeValid(int size)
 	       || size == MEMORY_RAM_320_COMPY_SHOP || size == 576 || size == 1088;
 }
 
-void MEMORY_InitialiseMachine(void)
+void MEMORY_InitialiseMachineCtx(Atari800_Instance *inst)
 {
+	M = &inst->memory;
 	int const os_size = Atari800_machine_type == Atari800_MACHINE_800 ? 0x2800
 	                    : Atari800_machine_type == Atari800_MACHINE_5200 ? 0x800
 	                    : 0x4000;
@@ -339,8 +352,9 @@ void MEMORY_InitialiseMachine(void)
 
 #ifndef BASIC
 
-void MEMORY_StateSave(UBYTE SaveVerbose)
+void MEMORY_StateSaveCtx(Atari800_Instance *inst, UBYTE SaveVerbose)
 {
+	M = &inst->memory;
 	int temp;
 	UBYTE byte;
 
@@ -437,8 +451,9 @@ void MEMORY_StateSave(UBYTE SaveVerbose)
 	}
 }
 
-void MEMORY_StateRead(UBYTE SaveVerbose, UBYTE StateVersion)
+void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE StateVersion)
 {
+	M = &inst->memory;
 	int base_ram_kb;
 	int num_xe_banks;
 	UBYTE portb;
@@ -686,16 +701,18 @@ void MEMORY_StateRead(UBYTE SaveVerbose, UBYTE StateVersion)
 
 #endif /* BASIC */
 
-void MEMORY_CopyFromMem(UWORD from, UBYTE *to, int size)
+void MEMORY_CopyFromMemCtx(Atari800_Instance *inst, UWORD from, UBYTE *to, int size)
 {
+	M = &inst->memory;
 	while (--size >= 0) {
 		*to++ = MEMORY_GetByte(from);
 		from++;
 	}
 }
 
-void MEMORY_CopyToMem(const UBYTE *from, UWORD to, int size)
+void MEMORY_CopyToMemCtx(Atari800_Instance *inst, const UBYTE *from, UWORD to, int size)
 {
+	M = &inst->memory;
 	while (--size >= 0) {
 		MEMORY_PutByte(to, *from);
 		from++;
@@ -728,8 +745,9 @@ static UBYTE const * builtin_cart(UBYTE portb)
 }
 
 /* Note: this function is only for XL/XE! */
-void MEMORY_HandlePORTB(UBYTE byte, UBYTE oldval)
+void MEMORY_HandlePORTBCtx(Atari800_Instance *inst, UBYTE byte, UBYTE oldval)
 {
+	M = &inst->memory;
 	int antic_bank = 0;
 	int mapram_selected = FALSE;
 	int new_mapram_selected = FALSE;
@@ -992,8 +1010,9 @@ static UBYTE AxlonGetByte(UWORD addr, int no_side_effects)
 	return MEMORY_mem[addr];
 }
 
-void MEMORY_Cart809fDisable(void)
+void MEMORY_Cart809fDisableCtx(Atari800_Instance *inst)
 {
+	M = &inst->memory;
 	if (cart809F_enabled) {
 		if (MEMORY_ram_size > 32) {
 			memcpy(MEMORY_mem + 0x8000, under_cart809F, 0x2000);
@@ -1005,8 +1024,9 @@ void MEMORY_Cart809fDisable(void)
 	}
 }
 
-void MEMORY_Cart809fEnable(void)
+void MEMORY_Cart809fEnableCtx(Atari800_Instance *inst)
 {
+	M = &inst->memory;
 	if (!cart809F_enabled) {
 		if (MEMORY_ram_size > 32) {
 			memcpy(under_cart809F, MEMORY_mem + 0x8000, 0x2000);
@@ -1016,8 +1036,9 @@ void MEMORY_Cart809fEnable(void)
 	}
 }
 
-void MEMORY_CartA0bfDisable(void)
+void MEMORY_CartA0bfDisableCtx(Atari800_Instance *inst)
 {
+	M = &inst->memory;
 	if (MEMORY_cartA0BF_enabled) {
 		/* No BASIC if not XL/XE or bit 1 of PORTB set */
 		/* or accessing extended 576K or 1088K memory */
@@ -1041,8 +1062,9 @@ void MEMORY_CartA0bfDisable(void)
 	}
 }
 
-void MEMORY_CartA0bfEnable(void)
+void MEMORY_CartA0bfEnableCtx(Atari800_Instance *inst)
 {
+	M = &inst->memory;
 	if (!MEMORY_cartA0BF_enabled) {
 		/* No BASIC if not XL/XE or bit 1 of PORTB set */
 		/* or accessing extended 576K or 1088K memory */
@@ -1057,8 +1079,9 @@ void MEMORY_CartA0bfEnable(void)
 	}
 }
 
-void MEMORY_GetCharset(UBYTE *cs)
+void MEMORY_GetCharsetCtx(Atari800_Instance *inst, UBYTE *cs)
 {
+	(void) inst;
 	/* copy font, but change screencode order to ATASCII order */
 	memcpy(cs, ROM_altirra_5200_os + 0x200, 0x100); /* control chars */
 	memcpy(cs + 0x100, ROM_altirra_5200_os, 0x200); /* !"#$..., uppercase letters */
@@ -1068,6 +1091,9 @@ void MEMORY_GetCharset(UBYTE *cs)
 #ifndef PAGED_MEM
 UBYTE MEMORY_HwGetByte(UWORD addr, int no_side_effects)
 {
+	/* Transitional: the chip modules dispatched here are not yet migrated,
+	   so they operate on the default instance. */
+	M = &Atari800_default->memory;
 	UBYTE byte = 0xff;
 	switch (addr & 0xff00) {
 	case 0x4f00:
@@ -1149,6 +1175,9 @@ UBYTE MEMORY_HwGetByte(UWORD addr, int no_side_effects)
 
 void MEMORY_HwPutByte(UWORD addr, UBYTE byte)
 {
+	/* Transitional: the chip modules dispatched here are not yet migrated,
+	   so they operate on the default instance. */
+	M = &Atari800_default->memory;
 	switch (addr & 0xff00) {
 	case 0x4f00:
 	case 0x8f00:
