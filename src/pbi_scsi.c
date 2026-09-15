@@ -26,6 +26,7 @@
 #include "util.h"
 #include "log.h"
 #include "pbi_scsi.h"
+#include "instance.h"
 
 #ifdef PBI_DEBUG
 #define D(a) a
@@ -33,30 +34,45 @@
 #define D(a) do{}while(0)
 #endif
 
-int PBI_SCSI_CD = FALSE;
-int PBI_SCSI_MSG = FALSE;
-int PBI_SCSI_IO = FALSE;
-int PBI_SCSI_BSY = FALSE;
-int PBI_SCSI_REQ = FALSE;
-int PBI_SCSI_ACK = FALSE;
+/* Transitional Option C bridge: the per-instance SCSI state lives in
+   SCSI_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (SCS = &inst->scsi); inside this file the legacy state names
+   route through SCS, so the _Ctx bodies operate on their own instance. */
+static SCSI_state_t *SCS;
 
-int PBI_SCSI_SEL = FALSE;
+#define PBI_SCSI_PIN_CTX(inst) do { \
+	SCS = &(inst)->scsi; \
+} while (0)
 
-static UBYTE scsi_byte;
+/* Route the legacy state names through the pinned context. */
+#undef PBI_SCSI_CD
+#undef PBI_SCSI_MSG
+#undef PBI_SCSI_IO
+#undef PBI_SCSI_BSY
+#undef PBI_SCSI_REQ
+#undef PBI_SCSI_ACK
+#undef PBI_SCSI_SEL
+#undef PBI_SCSI_disk
+#define PBI_SCSI_CD   (SCS->CD)
+#define PBI_SCSI_MSG  (SCS->MSG)
+#define PBI_SCSI_IO   (SCS->IO)
+#define PBI_SCSI_BSY  (SCS->BSY)
+#define PBI_SCSI_REQ  (SCS->REQ)
+#define PBI_SCSI_ACK  (SCS->ACK)
+#define PBI_SCSI_SEL  (SCS->SEL)
+#define PBI_SCSI_disk (SCS->disk)
+#define scsi_byte     (SCS->byte)
+#define scsi_phase    (SCS->phase)
+#define scsi_bufpos   (SCS->bufpos)
+#define scsi_buffer   (SCS->buffer)
+#define scsi_count    (SCS->count)
 
 #define SCSI_PHASE_SELECTION 0
 #define SCSI_PHASE_DATAIN 1
 #define SCSI_PHASE_DATAOUT 2
 #define SCSI_PHASE_COMMAND 3
-#define SCSI_PHASE_STATUS 4 
+#define SCSI_PHASE_STATUS 4
 #define SCSI_PHASE_MSGIN 5
-
-static int scsi_phase = SCSI_PHASE_SELECTION;
-static int scsi_bufpos = 0;
-static UBYTE scsi_buffer[256];
-static int scsi_count = 0;
-
-FILE *PBI_SCSI_disk = NULL;
 
 static void scsi_changephase(int phase)
 {
@@ -195,8 +211,9 @@ static void scsi_nextbyte(void)
 	}
 }
 
-void PBI_SCSI_PutSEL(int newsel)
+void PBI_SCSI_PutSEL_Ctx(Atari800_Instance *inst, int newsel)
 {
+	PBI_SCSI_PIN_CTX(inst);
 	if (newsel != PBI_SCSI_SEL) {
 		/* SEL changed state */
 		PBI_SCSI_SEL = newsel;
@@ -207,8 +224,9 @@ void PBI_SCSI_PutSEL(int newsel)
 	}
 }
 
-void PBI_SCSI_PutACK(int newack)
+void PBI_SCSI_PutACK_Ctx(Atari800_Instance *inst, int newack)
 {
+	PBI_SCSI_PIN_CTX(inst);
 	if (newack != PBI_SCSI_ACK) {
 		/* ACK changed state */
 		PBI_SCSI_ACK = newack;
@@ -226,13 +244,15 @@ void PBI_SCSI_PutACK(int newack)
 	}
 }
 
-UBYTE PBI_SCSI_GetByte(void)
+UBYTE PBI_SCSI_GetByte_Ctx(Atari800_Instance *inst)
 {
+	PBI_SCSI_PIN_CTX(inst);
 	return (scsi_buffer[scsi_bufpos]);
 }
 
-void PBI_SCSI_PutByte(UBYTE byte)
+void PBI_SCSI_PutByte_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
+	PBI_SCSI_PIN_CTX(inst);
 	scsi_byte = byte;
 }
 

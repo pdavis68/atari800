@@ -282,7 +282,8 @@ refactor. It is the working companion to
 ## Phase 3 — Peripheral modules
 
 > **Status: in progress.** SIO, Devices, Cartridge, Cassette, PBI, the
-> ESC/Binload handlers, and RTIME done (2026-09-15). All of them now expose
+> PBI SCSI/Black Box/MIO sub-modules, the ESC/Binload handlers, and RTIME
+> done (2026-09-15). All of them now expose
 > `*_Ctx(Atari800_Instance *inst, ...)` entry points with legacy-name
 > forwarding macros in their headers. Verified with the Acid800 suite
 > (`-atari test/acid800.atr -acid800 test/acid800.expected`): results
@@ -471,21 +472,112 @@ refactor. It is the working companion to
 
 ### 3.6 PBI sub-modules
 
-- [ ] **PBI_BB** — [`src/pbi_bb.h`](src/pbi_bb.h): `PBI_BB_Menu`, `PBI_BB_Frame`,
-      `PBI_BB_Initialise`, `PBI_BB_Exit`, `PBI_BB_D1GetByte`, `PBI_BB_D1PutByte`,
-      `PBI_BB_D6GetByte`, `PBI_BB_D6PutByte`, `PBI_BB_StateSave`,
-      `PBI_BB_StateRead`; state `PBI_BB_enabled`.
-- [ ] **PBI_MIO** — [`src/pbi_mio.h`](src/pbi_mio.h): `PBI_MIO_Initialise`,
-      `PBI_MIO_Exit`, `PBI_MIO_D1GetByte`, `PBI_MIO_D1PutByte`,
-      `PBI_MIO_D6GetByte`, `PBI_MIO_D6PutByte`, `PBI_MIO_StateSave`,
-      `PBI_MIO_StateRead`; state `PBI_MIO_enabled`.
-- [ ] **PBI_PROTO80** — [`src/pbi_proto80.h`](src/pbi_proto80.h):
+> **Status:** SCSI, Black Box, MIO, and PROTO80 done (2026-09-15). `PBI_SCSI_*` now
+> exposes `*_Ctx(Atari800_Instance *inst, ...)` entry points (SCSI state lives
+> in `SCSI_state_t`), and BB/MIO route their SCSI access through *their own*
+> instance (`inst->scsi`), so the SCSI bus is fully per-instance. BB and MIO
+> also re-point `PBI_IRQ` to their own instance's `pbi.IRQ` inside their `.c`
+> files. pbi.c, atari.c, statesav.c and libatari800/main.c go through the
+> forwarding macros (transitional: default instance). Build passes; Acid800
+> results identical to pre-refactor baseline; 20 s no-disk smoke run clean.
+
+- [x] **PBI_BB** — [`src/pbi_bb.h`](src/pbi_bb.h), [`src/pbi_bb.c`](src/pbi_bb.c):
+      `PBI_BB_Menu`, `PBI_BB_Frame`, `PBI_BB_Initialise`, `PBI_BB_Exit`,
+      `PBI_BB_D1GetByte`, `PBI_BB_D1PutByte`, `PBI_BB_D6GetByte`,
+      `PBI_BB_D6PutByte`, `PBI_BB_StateSave`, `PBI_BB_StateRead`
+      (also `PBI_BB_ReadConfig`/`PBI_BB_WriteConfig`).
+      Done 2026-09-15: each is now `PBI_BB_*_Ctx(Atari800_Instance *inst, ...)`
+      in `pbi_bb.c`, pinning the file-scope contexts (`BB = &inst->bb`,
+      `BBi = inst`) via `PBI_BB_PIN_CTX(inst)`; all state aliases inside
+      `pbi_bb.c` route through `BB`. In `pbi_bb.h` the legacy names are
+      forwarding macros passing `Atari800_default`. Build passes; Acid800
+      results identical to pre-refactor baseline.
+- [x] Move state (PBI_BB): `PBI_BB_enabled` plus the previously file-scope
+      internals (`bb_rom`, `bb_rom_size`, `bb_rom_high_bit`, `bb_rom_bank`,
+      `bb_rom_filename`, `bb_ram`, `bb_ram_bank_offset`, `bb_PCR`,
+      `bb_scsi_enabled`, `bb_scsi_disk_filename`, `buttondown`, and the
+      frame counter from `PBI_BB_Frame`).
+      Done 2026-09-15: all moved into `BB_state_t`
+      ([`src/instance.h`](src/instance.h)), **embedded by value** in
+      `Atari800_Instance` (`.bb`); `pbi_bb.c`/`pbi_bb.h` alias the legacy
+      names to `Atari800_default->bb.*`. Default-instance init preserved in
+      `atari.c` (`scsi_disk_filename = Util_FILENAME_NOT_SET`); the ROM/RAM
+      buffers remain heap-allocated pointers filled by `init_bb()`.
+- [x] **PBI_MIO** — [`src/pbi_mio.h`](src/pbi_mio.h), [`src/pbi_mio.c`](src/pbi_mio.c):
+      `PBI_MIO_Initialise`, `PBI_MIO_Exit`, `PBI_MIO_D1GetByte`,
+      `PBI_MIO_D1PutByte`, `PBI_MIO_D6GetByte`, `PBI_MIO_D6PutByte`,
+      `PBI_MIO_StateSave`, `PBI_MIO_StateRead` (also
+      `PBI_MIO_ReadConfig`/`PBI_MIO_WriteConfig`); state `PBI_MIO_enabled`.
+      Done 2026-09-15: each is now `PBI_MIO_*_Ctx(Atari800_Instance *inst, ...)`
+      in `pbi_mio.c`, pinning the file-scope contexts (`MIO = &inst->mio`,
+      `MIOi = inst`) via `PBI_MIO_PIN_CTX(inst)`; all state aliases inside
+      `pbi_mio.c` route through `MIO`. In `pbi_mio.h` the legacy names are
+      forwarding macros passing `Atari800_default`. Build passes; Acid800
+      results identical to pre-refactor baseline.
+- [x] Move state (PBI_MIO): `PBI_MIO_enabled` plus the previously file-scope
+      internals (`mio_rom`, `mio_rom_size`, `mio_rom_bank`,
+      `mio_rom_filename`, `mio_ram`, `mio_ram_size`, `mio_ram_bank_offset`,
+      `mio_ram_enabled`, `mio_scsi_enabled`, `mio_scsi_disk_filename`).
+      Done 2026-09-15: all moved into `MIO_state_t`
+      ([`src/instance.h`](src/instance.h)), **embedded by value** in
+      `Atari800_Instance` (`.mio`); `pbi_mio.c`/`pbi_mio.h` alias the legacy
+      names to `Atari800_default->mio.*`. Default-instance init preserved in
+      `atari.c` (`rom_size = 0x4000`, `ram_size = 0x100000`,
+      `scsi_disk_filename = Util_FILENAME_NOT_SET`); the ROM/RAM buffers
+      remain heap-allocated pointers filled by `init_mio()`.
+- [x] **PBI_SCSI** — [`src/pbi_scsi.h`](src/pbi_scsi.h), [`src/pbi_scsi.c`](src/pbi_scsi.c):
+      `PBI_SCSI_PutByte`, `PBI_SCSI_GetByte`, `PBI_SCSI_PutSEL`,
+      `PBI_SCSI_PutACK`; state `PBI_SCSI_CD/MSG/IO/BSY/REQ/SEL/ACK`,
+      `PBI_SCSI_disk`.
+      Done 2026-09-15: each is now `PBI_SCSI_*_Ctx(Atari800_Instance *inst, ...)`
+      in `pbi_scsi.c`, pinning the file-scope context (`SCS = &inst->scsi`)
+      via `PBI_SCSI_PIN_CTX(inst)`; the state aliases inside `pbi_scsi.c`
+      route through `SCS` (including the internal transfer state
+      `scsi_byte`, `scsi_phase`, `scsi_bufpos`, `scsi_buffer[256]`,
+      `scsi_count`, and the `SCSI_PHASE_*` defines kept in `pbi_scsi.c`).
+      In `pbi_scsi.h` the legacy names are forwarding macros passing
+      `Atari800_default`, and the signal-line aliases (`PBI_SCSI_CD` etc.)
+      read `Atari800_default->scsi.*`. `pbi_bb.c` and `pbi_mio.c` `#undef`
+      these aliases and re-point them to their own instance, so the SCSI
+      bus is per-instance end-to-end. Build passes; Acid800 results
+      identical to pre-refactor baseline.
+- [x] Move state (PBI_SCSI): `PBI_SCSI_CD/MSG/IO/BSY/REQ/SEL/ACK`,
+      `PBI_SCSI_disk` and the internal transfer state.
+      Done 2026-09-15: all moved into `SCSI_state_t`
+      ([`src/instance.h`](src/instance.h)), **embedded by value** in
+      `Atari800_Instance` (`.scsi`); defaults (all signals FALSE,
+      `disk = NULL`) match the old static initialisers via zero-init.
+- [x] **PBI_PROTO80** — [`src/pbi_proto80.h`](src/pbi_proto80.h),
+      [`src/pbi_proto80.c`](src/pbi_proto80.c):
       `PBI_PROTO80_Initialise`, `PBI_PROTO80_Exit`, `PBI_PROTO80_D1GetByte`,
       `PBI_PROTO80_D1PutByte`, `PBI_PROTO80_D1ffPutByte`,
-      `PBI_PROTO80_GetPixels`; state `PBI_PROTO80_enabled`.
-- [ ] **PBI_SCSI** — [`src/pbi_scsi.h`](src/pbi_scsi.h): `PBI_SCSI_PutByte`,
-      `PBI_SCSI_GetByte`, `PBI_SCSI_PutSEL`, `PBI_SCSI_PutACK`; state
-      `PBI_SCSI_CD/MSG/IO/BSY/REQ/SEL/ACK`, `PBI_SCSI_disk`.
+      `PBI_PROTO80_GetPixels` (also
+      `PBI_PROTO80_ReadConfig`/`PBI_PROTO80_WriteConfig`).
+      Done 2026-09-15: each is now
+      `PBI_PROTO80_*_Ctx(Atari800_Instance *inst, ...)` in `pbi_proto80.c`,
+      pinning the file-scope context (`PR = &inst->proto80`, `PRi = inst`)
+      via `PBI_PROTO80_PIN_CTX(inst)`; the state aliases inside
+      `pbi_proto80.c` route through `PR`. In `pbi_proto80.h` the legacy
+      names are forwarding macros passing `Atari800_default`. The D1/D1ff
+      Get/PutByte functions are dispatched from the
+      `MEMORY_HwGetByte`/`MEMORY_HwPutByte` switch statements in `pbi.c`
+      (transitional: default instance via the forwarding macros), and
+      `sdl/video.c`'s `PBI_PROTO80_GetPixels` call likewise goes through the
+      forwarding macro. Build passes; 20 s no-disk smoke run clean (no CIM).
+- [x] Move state (PBI_PROTO80): `PBI_PROTO80_enabled` plus the previously
+      file-scope `proto80rom` (heap-allocated 0x800-byte ROM buffer) and
+      `proto80_rom_filename`.
+      Done 2026-09-15: `PROTO80_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.proto80`); `pbi_proto80.c`/`pbi_proto80.h`
+      alias `PBI_PROTO80_enabled` to `Atari800_default->proto80.enabled`.
+      Defaults (`enabled = FALSE`, empty filename) match the old static
+      initialisers via zero-init; the ROM buffer stays a heap pointer
+      filled by `PBI_PROTO80_Initialise_Ctx`. `_Ctx` bodies touch
+      `PRi->pbi.D6D7ram` and `PRi->memory.mem` directly (their own
+      instance), so the module is per-instance end-to-end; only the
+      transitional dispatch (pbi.c, sdl/video.c) still pins the default
+      instance.
 - [ ] **PBI_XLD** — [`src/pbi_xld.h`](src/pbi_xld.h): all `PBI_XLD_*` functions
       and state.
 

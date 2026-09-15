@@ -40,18 +40,55 @@
 #define D(a) do{}while(0)
 #endif
 
-int PBI_MIO_enabled = FALSE;
+/* Transitional Option C bridge: the per-instance MIO state lives in
+   MIO_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   contexts (MIO = &inst->mio, MIOi = inst); inside this file the legacy
+   state names route through MIO, so the _Ctx bodies operate on their own
+   instance. The SCSI state is reached through the same instance. */
+static Atari800_Instance *MIOi;
+static MIO_state_t *MIO;
 
-static UBYTE *mio_rom;
-static int mio_rom_size = 0x4000;
-static int mio_ram_bank_offset = 0;
-static UBYTE *mio_ram;
-static int mio_ram_size = 0x100000;
-static UBYTE mio_rom_bank = 0;
-static int mio_ram_enabled = FALSE;
-static char mio_rom_filename[FILENAME_MAX];
-static char mio_scsi_disk_filename[FILENAME_MAX] = Util_FILENAME_NOT_SET;
-static int mio_scsi_enabled = FALSE;
+#define PBI_MIO_PIN_CTX(inst) do { \
+	MIOi = (inst); \
+	MIO = &MIOi->mio; \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef PBI_SCSI_CD
+#undef PBI_SCSI_MSG
+#undef PBI_SCSI_IO
+#undef PBI_SCSI_BSY
+#undef PBI_SCSI_REQ
+#undef PBI_SCSI_SEL
+#undef PBI_SCSI_disk
+#undef PBI_SCSI_GetByte
+#undef PBI_SCSI_PutSEL
+#undef PBI_SCSI_PutACK
+#undef PBI_SCSI_PutByte
+#undef PBI_MIO_enabled
+#define PBI_MIO_enabled      (MIO->enabled)
+#define mio_rom              (MIO->rom)
+#define mio_rom_size         (MIO->rom_size)
+#define mio_rom_bank         (MIO->rom_bank)
+#define mio_rom_filename     (MIO->rom_filename)
+#define mio_ram              (MIO->ram)
+#define mio_ram_size         (MIO->ram_size)
+#define mio_ram_bank_offset  (MIO->ram_bank_offset)
+#define mio_ram_enabled      (MIO->ram_enabled)
+#define mio_scsi_enabled     (MIO->scsi_enabled)
+#define mio_scsi_disk_filename (MIO->scsi_disk_filename)
+/* SCSI state and entry points of the same instance. */
+#define PBI_SCSI_BSY  (MIOi->scsi.BSY)
+#define PBI_SCSI_REQ  (MIOi->scsi.REQ)
+#define PBI_SCSI_SEL  (MIOi->scsi.SEL)
+#define PBI_SCSI_CD   (MIOi->scsi.CD)
+#define PBI_SCSI_MSG  (MIOi->scsi.MSG)
+#define PBI_SCSI_IO   (MIOi->scsi.IO)
+#define PBI_SCSI_disk (MIOi->scsi.disk)
+#define PBI_SCSI_GetByte()    PBI_SCSI_GetByte_Ctx(MIOi)
+#define PBI_SCSI_PutSEL(sel)  PBI_SCSI_PutSEL_Ctx(MIOi, sel)
+#define PBI_SCSI_PutACK(ack)  PBI_SCSI_PutACK_Ctx(MIOi, ack)
+#define PBI_SCSI_PutByte(b)   PBI_SCSI_PutByte_Ctx(MIOi, b)
 
 static void init_mio(void)
 {
@@ -83,9 +120,10 @@ static void init_mio(void)
 	memset(mio_ram, 0, mio_ram_size);
 }
 
-int PBI_MIO_Initialise(int *argc, char *argv[])
+int PBI_MIO_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i, j;
+	PBI_MIO_PIN_CTX(inst);
 	for (i = j = 1; i < *argc; i++) {
 		if (strcmp(argv[i], "-mio") == 0) {
 			init_mio();
@@ -102,8 +140,9 @@ int PBI_MIO_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void PBI_MIO_Exit(void)
+void PBI_MIO_Exit_Ctx(Atari800_Instance *inst)
 {
+	PBI_MIO_PIN_CTX(inst);
 	if (PBI_SCSI_disk != NULL) {
 		fclose(PBI_SCSI_disk);
 		PBI_SCSI_disk = NULL;
@@ -113,8 +152,9 @@ void PBI_MIO_Exit(void)
 	mio_rom = mio_ram = NULL;
 }
 
-int PBI_MIO_ReadConfig(char *string, char *ptr) 
+int PBI_MIO_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	PBI_MIO_PIN_CTX(inst);
 	if (strcmp(string, "MIO_ROM") == 0)
 		Util_strlcpy(mio_rom_filename, ptr, sizeof(mio_rom_filename));
 	else if (strcmp(string, "MIO_SCSI_DISK") == 0)
@@ -123,8 +163,9 @@ int PBI_MIO_ReadConfig(char *string, char *ptr)
 	return TRUE; /* matched something */
 }
 
-void PBI_MIO_WriteConfig(FILE *fp)
+void PBI_MIO_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	PBI_MIO_PIN_CTX(inst);
 	fprintf(fp, "MIO_ROM=%s\n", mio_rom_filename);
 	if (!Util_filenamenotset(mio_scsi_disk_filename)) {
 		fprintf(fp, "MIO_SCSI_DISK=%s\n", mio_scsi_disk_filename);
@@ -132,9 +173,10 @@ void PBI_MIO_WriteConfig(FILE *fp)
 }
 
 /* $D1xx */
-UBYTE PBI_MIO_D1GetByte(UWORD addr, int no_side_effects)
+UBYTE PBI_MIO_D1GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
 	UBYTE result = 0x00;/*ff*/;
+	PBI_MIO_PIN_CTX(inst);
 	addr &= 0xffe3; /* 7 mirrors */
 	D(printf("MIO Read:%4x  PC:%4x\n", addr, CPU_remember_PC[(CPU_remember_PC_curpos-1)%CPU_REMEMBER_PC_STEPS]));
 	if (addr == 0xd1e2) {
@@ -153,12 +195,15 @@ UBYTE PBI_MIO_D1GetByte(UWORD addr, int no_side_effects)
 }
 
 /* $D1xx */
-void PBI_MIO_D1PutByte(UWORD addr, UBYTE byte)
+void PBI_MIO_D1PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
-	int old_mio_ram_bank_offset = mio_ram_bank_offset;
-	int old_mio_ram_enabled = mio_ram_enabled;
+	int old_mio_ram_bank_offset;
+	int old_mio_ram_enabled;
 	int offset_changed;
 	int ram_enabled_changed;
+	PBI_MIO_PIN_CTX(inst);
+	old_mio_ram_bank_offset = mio_ram_bank_offset;
+	old_mio_ram_enabled = mio_ram_enabled;
 	addr &= 0xffe3; /* 7 mirrors */
 	if (addr == 0xd1e0) {
 		/* ram bank A15-A8 */
@@ -195,9 +240,9 @@ void PBI_MIO_D1PutByte(UWORD addr, UBYTE byte)
 				D(printf("Floating point rom activated\n"));
 
 			}
-			mio_rom_bank = byte;	
+			mio_rom_bank = byte;
 		}
-		
+
 	}
 	offset_changed = (old_mio_ram_bank_offset != mio_ram_bank_offset);
 	ram_enabled_changed = (old_mio_ram_enabled != mio_ram_enabled);
@@ -219,23 +264,26 @@ void PBI_MIO_D1PutByte(UWORD addr, UBYTE byte)
 /* MIO RAM page at D600-D6ff */
 /* Possible to put code in this ram, so we can't avoid using MEMORY_mem[] */
 /* because opcode fetch doesn't call this function */
-UBYTE PBI_MIO_D6GetByte(UWORD addr, int no_side_effects)
+UBYTE PBI_MIO_D6GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
+	PBI_MIO_PIN_CTX(inst);
 	if (!mio_ram_enabled) return 0xff;
 	return MEMORY_mem[addr];
 }
 
 /* $D6xx */
-void PBI_MIO_D6PutByte(UWORD addr, UBYTE byte)
+void PBI_MIO_D6PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	PBI_MIO_PIN_CTX(inst);
 	if (!mio_ram_enabled) return;
 	MEMORY_mem[addr]=byte;
 }
 
 #ifndef BASIC
 
-void PBI_MIO_StateSave(void)
+void PBI_MIO_StateSave_Ctx(Atari800_Instance *inst)
 {
+	PBI_MIO_PIN_CTX(inst);
 	StateSav_SaveINT(&PBI_MIO_enabled, 1);
 	if (PBI_MIO_enabled) {
 		StateSav_SaveFNAME(mio_scsi_disk_filename);
@@ -249,8 +297,9 @@ void PBI_MIO_StateSave(void)
 	}
 }
 
-void PBI_MIO_StateRead(void)
+void PBI_MIO_StateRead_Ctx(Atari800_Instance *inst)
 {
+	PBI_MIO_PIN_CTX(inst);
 	StateSav_ReadINT(&PBI_MIO_enabled, 1);
 	if (PBI_MIO_enabled) {
 		StateSav_ReadFNAME(mio_scsi_disk_filename);

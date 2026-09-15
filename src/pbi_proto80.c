@@ -31,13 +31,23 @@
 #include "memory.h"
 #include <stdlib.h>
 
+/* Transitional Option C bridge: the per-instance PROTO80 state lives in
+   PROTO80_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (PR = &inst->proto80, PRi = inst); inside this file the legacy
+   names are #undef'd and re-pointed to PR, so the _Ctx bodies operate on
+   their own instance. */
+#undef PBI_PROTO80_enabled
+
+static Atari800_Instance *PRi;
+static PROTO80_state_t *PR;
+
+#define PBI_PROTO80_PIN_CTX(inst) do { \
+	PRi = (inst); \
+	PR = &(inst)->proto80; \
+} while (0)
+
 #define PROTO80_PBI_NUM 2
 #define PROTO80_MASK (1 << PROTO80_PBI_NUM)
-
-static UBYTE *proto80rom;
-static char proto80_rom_filename[FILENAME_MAX];
-
-int PBI_PROTO80_enabled = FALSE;
 
 #ifdef PBI_DEBUG
 #define D(a) a
@@ -45,13 +55,14 @@ int PBI_PROTO80_enabled = FALSE;
 #define D(a) do{}while(0)
 #endif
 
-int PBI_PROTO80_Initialise(int *argc, char *argv[])
+int PBI_PROTO80_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i, j;
+	PBI_PROTO80_PIN_CTX(inst);
 	for (i = j = 1; i < *argc; i++) {
 		if (strcmp(argv[i], "-proto80") == 0) {
 			Log_print("proto80 enabled");
-			PBI_PROTO80_enabled = TRUE;
+			PR->enabled = TRUE;
 		}
 		else {
 		 	if (strcmp(argv[i], "-help") == 0) {
@@ -62,87 +73,94 @@ int PBI_PROTO80_Initialise(int *argc, char *argv[])
 	}
 	*argc = j;
 
-	if (PBI_PROTO80_enabled) {
-		proto80rom = (UBYTE *)Util_malloc(0x800);
-		if (!Atari800_LoadImage(proto80_rom_filename, proto80rom, 0x800)) {
-			free(proto80rom);
-			PBI_PROTO80_enabled = FALSE;
+	if (PR->enabled) {
+		PR->rom = (UBYTE *)Util_malloc(0x800);
+		if (!Atari800_LoadImage(PR->rom_filename, PR->rom, 0x800)) {
+			free(PR->rom);
+			PR->enabled = FALSE;
 			Log_print("Couldn't load proto80 rom image");
 			return FALSE;
 		}
 		else {
 			Log_print("loaded proto80 rom image");
-			PBI_D6D7ram = TRUE;
+			PRi->pbi.D6D7ram = TRUE;
 		}
 	}
 
 	return TRUE;
 }
 
-void PBI_PROTO80_Exit(void)
+void PBI_PROTO80_Exit_Ctx(Atari800_Instance *inst)
 {
-	if (PBI_PROTO80_enabled) {
-		free(proto80rom);
-		PBI_PROTO80_enabled = FALSE;
+	PBI_PROTO80_PIN_CTX(inst);
+	if (PR->enabled) {
+		free(PR->rom);
+		PR->enabled = FALSE;
 	}
 }
 
-int PBI_PROTO80_ReadConfig(char *string, char *ptr)
+int PBI_PROTO80_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	PBI_PROTO80_PIN_CTX(inst);
 	if (strcmp(string, "PROTO80_ROM") == 0)
-		Util_strlcpy(proto80_rom_filename, ptr, sizeof(proto80_rom_filename));
+		Util_strlcpy(PR->rom_filename, ptr, sizeof(PR->rom_filename));
 	else return FALSE; /* no match */
 	return TRUE; /* matched something */
 }
 
-void PBI_PROTO80_WriteConfig(FILE *fp)
+void PBI_PROTO80_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
-	fprintf(fp, "PROTO80_ROM=%s\n", proto80_rom_filename);
+	PBI_PROTO80_PIN_CTX(inst);
+	fprintf(fp, "PROTO80_ROM=%s\n", PR->rom_filename);
 }
 
-int PBI_PROTO80_D1GetByte(UWORD addr, int no_side_effects)
+int PBI_PROTO80_D1GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
 	int result = PBI_NOT_HANDLED;
-	if (PBI_PROTO80_enabled) {
+	PBI_PROTO80_PIN_CTX(inst);
+	if (PR->enabled) {
 	}
 	return result;
 }
 
-void PBI_PROTO80_D1PutByte(UWORD addr, UBYTE byte)
+void PBI_PROTO80_D1PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
-
+	PBI_PROTO80_PIN_CTX(inst);
+	(void)PR;
 }
 
-int PBI_PROTO80_D1ffPutByte(UBYTE byte)
+int PBI_PROTO80_D1ffPutByte_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
 	int result = 0; /* handled */
-	if (PBI_PROTO80_enabled && byte == PROTO80_MASK) {
-		memcpy(MEMORY_mem + 0xd800, proto80rom, 0x800);
+	PBI_PROTO80_PIN_CTX(inst);
+	if (PR->enabled && byte == PROTO80_MASK) {
+		memcpy(PRi->memory.mem + 0xd800, PR->rom, 0x800);
 		D(printf("PROTO80 rom activated\n"));
 	}
 	else result = PBI_NOT_HANDLED;
 	return result;
 }
 
-UBYTE PBI_PROTO80_GetPixels(int scanline, int column)
+UBYTE PBI_PROTO80_GetPixels_Ctx(Atari800_Instance *inst, int scanline, int column)
 {
 #define PROTO80_ROWS 24
 #define PROTO80_CELL_HEIGHT 8
 	UBYTE character;
 	UBYTE invert;
 	UBYTE font_data;
+	UBYTE *mem = PRi->memory.mem;
 	int row = scanline / PROTO80_CELL_HEIGHT;
 	int line = scanline % PROTO80_CELL_HEIGHT;
 	if (row  >= PROTO80_ROWS) {
 		return 0;
 	}
-	character = MEMORY_mem[0x9800 + row*80 + column];
+	character = mem[0x9800 + row*80 + column];
 	invert = 0x00;
 	if (character & 0x80) {
 		invert = 0xff;
 		character &= 0x7f;
 	}
-	font_data = MEMORY_mem[0xe000 + character*8 + line];
+	font_data = mem[0xe000 + character*8 + line];
 	font_data ^= invert;
 	return font_data;
 }

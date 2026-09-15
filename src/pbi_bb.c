@@ -46,19 +46,61 @@
 /* information source: http://www.mathyvannisselroy.nl/bbdoku.txt*/
 #define BB_BUTTON_IRQ_MASK 1
 
-int PBI_BB_enabled = FALSE;
+/* Transitional Option C bridge: the per-instance Black Box state lives in
+   BB_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   contexts (BB = &inst->bb, BBi = inst); inside this file the legacy
+   state names route through BB, so the _Ctx bodies operate on their own
+   instance. The SCSI state is reached through the same instance. */
+static Atari800_Instance *BBi;
+static BB_state_t *BB;
 
-static UBYTE *bb_rom;
-static int bb_ram_bank_offset = 0;
-static UBYTE *bb_ram;
+#define PBI_BB_PIN_CTX(inst) do { \
+	BBi = (inst); \
+	BB = &BBi->bb; \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef PBI_SCSI_CD
+#undef PBI_SCSI_MSG
+#undef PBI_SCSI_IO
+#undef PBI_SCSI_BSY
+#undef PBI_SCSI_REQ
+#undef PBI_SCSI_SEL
+#undef PBI_SCSI_disk
+#undef PBI_SCSI_GetByte
+#undef PBI_SCSI_PutSEL
+#undef PBI_SCSI_PutACK
+#undef PBI_SCSI_PutByte
+#undef PBI_BB_enabled
+#define PBI_BB_enabled       (BB->enabled)
+#define bb_rom               (BB->rom)
+#define bb_rom_size          (BB->rom_size)
+#define bb_rom_high_bit      (BB->rom_high_bit)
+#define bb_rom_bank          (BB->rom_bank)
+#define bb_rom_filename      (BB->rom_filename)
+#define bb_ram               (BB->ram)
+#define bb_ram_bank_offset   (BB->ram_bank_offset)
+#define bb_PCR               (BB->PCR)
+#define bb_scsi_enabled      (BB->scsi_enabled)
+#define bb_scsi_disk_filename (BB->scsi_disk_filename)
+#define buttondown           (BB->buttondown)
+/* SCSI state and entry points of the same instance. */
+#define PBI_SCSI_BSY  (BBi->scsi.BSY)
+#define PBI_SCSI_REQ  (BBi->scsi.REQ)
+#define PBI_SCSI_SEL  (BBi->scsi.SEL)
+#define PBI_SCSI_CD   (BBi->scsi.CD)
+#define PBI_SCSI_IO   (BBi->scsi.IO)
+#define PBI_SCSI_disk (BBi->scsi.disk)
+#define PBI_SCSI_GetByte()    PBI_SCSI_GetByte_Ctx(BBi)
+#define PBI_SCSI_PutSEL(sel)  PBI_SCSI_PutSEL_Ctx(BBi, sel)
+#define PBI_SCSI_PutACK(ack)  PBI_SCSI_PutACK_Ctx(BBi, ack)
+#define PBI_SCSI_PutByte(b)   PBI_SCSI_PutByte_Ctx(BBi, b)
+/* PBI_IRQ of the same instance (transitional: pbi.c still dispatches
+   through the default instance). */
+#undef PBI_IRQ
+#define PBI_IRQ (BBi->pbi.IRQ)
+
 #define BB_RAM_SIZE 0x10000
-static UBYTE bb_rom_bank = 0;
-static int bb_rom_size;
-static int bb_rom_high_bit = 0x00;/*0x10*/
-static char bb_rom_filename[FILENAME_MAX];
-static UBYTE bb_PCR = 0; /* VIA Peripheral control register*/
-static int bb_scsi_enabled = FALSE;
-static char bb_scsi_disk_filename[FILENAME_MAX] = Util_FILENAME_NOT_SET;
 
 static void init_bb(void)
 {
@@ -98,9 +140,10 @@ static void init_bb(void)
 	memset(bb_ram,0,BB_RAM_SIZE);
 }
 
-int PBI_BB_Initialise(int *argc, char *argv[])
+int PBI_BB_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i, j;
+	PBI_BB_PIN_CTX(inst);
 	for (i = j = 1; i < *argc; i++) {
 		if (strcmp(argv[i], "-bb") == 0) {
 			init_bb();
@@ -117,8 +160,9 @@ int PBI_BB_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void PBI_BB_Exit(void)
+void PBI_BB_Exit_Ctx(Atari800_Instance *inst)
 {
+	PBI_BB_PIN_CTX(inst);
 	if (PBI_SCSI_disk != NULL) {
 		fclose(PBI_SCSI_disk);
 		PBI_SCSI_disk = NULL;
@@ -128,8 +172,9 @@ void PBI_BB_Exit(void)
 	bb_rom = bb_ram = NULL;
 }
 
-int PBI_BB_ReadConfig(char *string, char *ptr) 
+int PBI_BB_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	PBI_BB_PIN_CTX(inst);
 	if (strcmp(string, "BLACK_BOX_ROM") == 0)
 		Util_strlcpy(bb_rom_filename, ptr, sizeof(bb_rom_filename));
 	else if (strcmp(string, "BB_SCSI_DISK") == 0)
@@ -138,17 +183,19 @@ int PBI_BB_ReadConfig(char *string, char *ptr)
 	return TRUE; /* matched something */
 }
 
-void PBI_BB_WriteConfig(FILE *fp)
+void PBI_BB_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	PBI_BB_PIN_CTX(inst);
 	fprintf(fp, "BLACK_BOX_ROM=%s\n", bb_rom_filename);
 	if (!Util_filenamenotset(bb_scsi_disk_filename)) {
 		fprintf(fp, "BB_SCSI_DISK=%s\n", bb_scsi_disk_filename);
 	}
 }
 
-UBYTE PBI_BB_D1GetByte(UWORD addr, int no_side_effects)
+UBYTE PBI_BB_D1GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
 	UBYTE result = 0x00;/*ff;*/
+	PBI_BB_PIN_CTX(inst);
 	if (addr == 0xd1be) result = 0xff;
 	else if (addr == 0xd170) {
 		/* status */
@@ -174,8 +221,9 @@ UBYTE PBI_BB_D1GetByte(UWORD addr, int no_side_effects)
 	return result;
 }
 
-void PBI_BB_D1PutByte(UWORD addr, UBYTE byte)
+void PBI_BB_D1PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	PBI_BB_PIN_CTX(inst);
 	D(printf("BB Write addr:%4x byte:%2x, cpu:%4x\n", addr, byte, CPU_remember_PC[(CPU_remember_PC_curpos-1)%CPU_REMEMBER_PC_STEPS]));
 	if (addr == 0xd170) {
 		if (bb_scsi_enabled) PBI_SCSI_PutSEL(!(byte&0x04));
@@ -207,7 +255,7 @@ void PBI_BB_D1PutByte(UWORD addr, UBYTE byte)
 		memcpy(bb_ram+bb_ram_bank_offset,MEMORY_mem + 0xd600,0x100);
 		bb_ram_bank_offset = (byte << 8);
 		memcpy(MEMORY_mem + 0xd600, bb_ram+bb_ram_bank_offset, 0x100);
-	} 
+	}
 	else if (addr  == 0xd1be) {
 		/* high rom bit */
 		if (bb_rom_high_bit != ((byte & 0x04) << 2) && bb_rom_size == 0x10000) {
@@ -241,7 +289,7 @@ void PBI_BB_D1PutByte(UWORD addr, UBYTE byte)
 					if (byte != 0) D(printf("d1ff ERROR: byte=%2x\n", byte));
 					D(printf("Floating point rom activated\n"));
 			}
-			bb_rom_bank = byte;	
+			bb_rom_bank = byte;
 		}
 	}
 }
@@ -249,21 +297,22 @@ void PBI_BB_D1PutByte(UWORD addr, UBYTE byte)
 /* Black Box RAM page at D600-D6ff*/
 /* Possible to put code in this ram, so we can't avoid using MEMORY_mem[]
  * because opcode fetch doesn't call this function*/
-UBYTE PBI_BB_D6GetByte(UWORD addr, int no_side_effects)
+UBYTE PBI_BB_D6GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
+	(void)inst;
 	return MEMORY_mem[addr];
 }
 
 /* $D6xx */
-void PBI_BB_D6PutByte(UWORD addr, UBYTE byte)
+void PBI_BB_D6PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	(void)inst;
 	MEMORY_mem[addr]=byte;
 }
 
-static int buttondown;
-
-void PBI_BB_Menu(void)
+void PBI_BB_Menu_Ctx(Atari800_Instance *inst)
 {
+	PBI_BB_PIN_CTX(inst);
 	if (!PBI_BB_enabled) return;
 	if (buttondown == FALSE) {
 		D(printf("blackbox button down interrupt generated\n"));
@@ -273,26 +322,27 @@ void PBI_BB_Menu(void)
 	}
 }
 
-void PBI_BB_Frame(void)
+void PBI_BB_Frame_Ctx(Atari800_Instance *inst)
 {
-	static int count = 0;
+	PBI_BB_PIN_CTX(inst);
 	if (buttondown) {
-	 	if (count < 1) count++;
+	 	if (BB->frame_count < 1) BB->frame_count++;
 		else {
 			D(printf("blackbox button up\n"));
 			PBI_IRQ &= ~BB_BUTTON_IRQ_MASK;
 			/* update pokey IRQ status */
 			POKEY_PutByte(POKEY_OFFSET_IRQEN, POKEY_IRQEN);
 			buttondown = FALSE;
-			count = 0;
+			BB->frame_count = 0;
 		}
 	}
 }
 
 #ifndef BASIC
 
-void PBI_BB_StateSave(void)
+void PBI_BB_StateSave_Ctx(Atari800_Instance *inst)
 {
+	PBI_BB_PIN_CTX(inst);
 	StateSav_SaveINT(&PBI_BB_enabled, 1);
 	if (PBI_BB_enabled) {
 		StateSav_SaveFNAME(bb_scsi_disk_filename);
@@ -306,8 +356,9 @@ void PBI_BB_StateSave(void)
 	}
 }
 
-void PBI_BB_StateRead(void)
+void PBI_BB_StateRead_Ctx(Atari800_Instance *inst)
 {
+	PBI_BB_PIN_CTX(inst);
 	StateSav_ReadINT(&PBI_BB_enabled, 1);
 	if (PBI_BB_enabled) {
 		StateSav_ReadFNAME(bb_scsi_disk_filename);

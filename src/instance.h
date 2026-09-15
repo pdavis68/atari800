@@ -423,6 +423,73 @@ typedef struct Binload_state_t {
 	int segfinished; /* currently not during loading of a segment */
 } Binload_state_t;
 
+typedef struct SCSI_state_t {
+	/* SCSI bus signal lines (TRUE = asserted). */
+	int CD;
+	int MSG;
+	int IO;
+	int BSY;
+	int REQ;
+	int ACK;
+	int SEL;
+	/* Disk image backing the SCSI bus (opened by Black Box / MIO). */
+	FILE *disk;
+	/* Internal transfer state. */
+	UBYTE byte;
+	int phase;
+	int bufpos;
+	UBYTE buffer[256];
+	int count;
+} SCSI_state_t;
+
+typedef struct BB_state_t {
+	/* TRUE to emulate the CSS Black Box. */
+	int enabled;
+	/* ROM image. */
+	UBYTE *rom;
+	int rom_size;
+	int rom_high_bit;
+	UBYTE rom_bank;
+	char rom_filename[FILENAME_MAX];
+	/* 64 KB Black Box RAM. */
+	UBYTE *ram;
+	int ram_bank_offset;
+	/* VIA Peripheral control register. */
+	UBYTE PCR;
+	/* SCSI disk state. */
+	int scsi_enabled;
+	char scsi_disk_filename[FILENAME_MAX];
+	/* Menu-button IRQ state. */
+	int buttondown;
+	int frame_count;
+} BB_state_t;
+
+typedef struct MIO_state_t {
+	/* TRUE to emulate the ICD MIO board. */
+	int enabled;
+	/* ROM image. */
+	UBYTE *rom;
+	int rom_size;
+	UBYTE rom_bank;
+	char rom_filename[FILENAME_MAX];
+	/* MIO RAM. */
+	UBYTE *ram;
+	int ram_size;
+	int ram_bank_offset;
+	int ram_enabled;
+	/* SCSI disk state. */
+	int scsi_enabled;
+	char scsi_disk_filename[FILENAME_MAX];
+} MIO_state_t;
+
+typedef struct PROTO80_state_t {
+	/* TRUE to emulate a prototype 80 column board for the 1090. */
+	int enabled;
+	/* Proto80 ROM image (0x800 bytes, heap-allocated when enabled). */
+	UBYTE *rom;
+	char rom_filename[FILENAME_MAX];
+} PROTO80_state_t;
+
 typedef struct RTIME_state_t {
 	/* TRUE to emulate the ICD R-Time 8 cartridge. */
 	int enabled;
@@ -457,9 +524,13 @@ typedef struct Atari800_Instance {
 	Cartridge_state_t cartridge;
 	Cassette_state_t cassette;
 	PBI_state_t pbi;
+	SCSI_state_t scsi;
+	BB_state_t bb;
+	MIO_state_t mio;
 	ESC_state_t esc;
 	Binload_state_t binload;
 	RTIME_state_t rtime;
+	PROTO80_state_t proto80;
 	Input_state_t *input;
 	Screen_state_t *screen;
 	Sound_state_t *sound;

@@ -212,6 +212,14 @@ static Atari800_Instance default_instance_storage = {
 	.pbi = {
 		.fp_active = TRUE,
 	},
+	.bb = {
+		.scsi_disk_filename = Util_FILENAME_NOT_SET,
+	},
+	.mio = {
+		.rom_size = 0x4000,
+		.ram_size = 0x100000,
+		.scsi_disk_filename = Util_FILENAME_NOT_SET,
+	},
 	.esc = {
 		.enable_sio_patch = TRUE,
 	},
