@@ -2353,7 +2353,7 @@ void CPU_GO(int limit)
 		data = IMMEDIATE;
 		UPDATE_GLOBAL_REGS;
 		CPU_GetStatus(inst);
-		ESC_Run(data);
+		ESC_Run_Ctx(inst, data);
 		CPU_PutStatus(inst);
 		UPDATE_LOCAL_REGS;
 		data = PL;
@@ -2369,7 +2369,7 @@ void CPU_GO(int limit)
 		data = IMMEDIATE;
 		UPDATE_GLOBAL_REGS;
 		CPU_GetStatus(inst);
-		ESC_Run(data);
+		ESC_Run_Ctx(inst, data);
 		CPU_PutStatus(inst);
 		UPDATE_LOCAL_REGS;
 		DONE;

@@ -18,12 +18,27 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.  */
 
 #include "atari.h"
+#include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 
-extern int RTIME_enabled;
+/* Transitional Option C bridge: the per-instance RTIME state lives in
+   RTIME_state_t (instance.h). Until all callers pass an instance
+   explicitly, the legacy global names are aliased to the default instance. */
+#define RTIME_enabled (Atari800_default->rtime.enabled)
 
-int RTIME_ReadConfig(char *string, char *ptr);
-void RTIME_WriteConfig(FILE *fp);
-int RTIME_Initialise(int *argc, char *argv[]);
-UBYTE RTIME_GetByte(void);
-void RTIME_PutByte(UBYTE byte);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. cartridge.c's _Ctx bodies pass their own
+   instance. */
+int RTIME_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr);
+void RTIME_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp);
+int RTIME_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+UBYTE RTIME_GetByte_Ctx(Atari800_Instance *inst);
+void RTIME_PutByte_Ctx(Atari800_Instance *inst, UBYTE byte);
+
+#define RTIME_ReadConfig(str, ptr) RTIME_ReadConfig_Ctx(Atari800_default, str, ptr)
+#define RTIME_WriteConfig(fp)      RTIME_WriteConfig_Ctx(Atari800_default, fp)
+#define RTIME_Initialise(argc, argv) RTIME_Initialise_Ctx(Atari800_default, argc, argv)
+#define RTIME_GetByte()            RTIME_GetByte_Ctx(Atari800_default)
+#define RTIME_PutByte(byte)        RTIME_PutByte_Ctx(Atari800_default, byte)
+
 #endif /* RTIME_H_ */

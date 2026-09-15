@@ -1,8 +1,13 @@
 #ifndef ESC_H_
 #define ESC_H_
 
-/* TRUE to enable patched (fast) Serial I/O. */
-extern int ESC_enable_sio_patch;
+#include "atari.h"
+#include "instance.h" /* Atari800_Instance, ESC_FunctionType (transitional default-instance aliases) */
+
+/* Transitional Option C bridge: the per-instance ESC state lives in
+   ESC_state_t (instance.h). Until all callers pass an instance explicitly,
+   the legacy global names are aliased to the default instance. */
+#define ESC_enable_sio_patch (Atari800_default->esc.enable_sio_patch)
 
 /* Escape codes used to mark places in 6502 code that must
    be handled specially by the emulator. An escape sequence
@@ -75,31 +80,31 @@ enum ESC_t {
 	ESC_BINIT = 0xe6
 };
 
-/* A function called to handle an escape sequence. */
-typedef void (*ESC_FunctionType)(void);
+/* A function called to handle an escape sequence is typedef'd as
+   ESC_FunctionType in instance.h (it is context-free for now; registered
+   handlers pin the default instance until every handler module is
+   converted). */
 
-/* Puts an escape sequence at the specified address. */
-void ESC_Add(UWORD address, UBYTE esc_code, ESC_FunctionType function);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. cpu.c passes its own instance to ESC_Run_Ctx
+   because the escape machinery runs inside the CPU decoder's context. */
+void ESC_Add_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function);
+void ESC_AddEscRts_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function);
+void ESC_AddEscRts2_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function);
+void ESC_Remove_Ctx(Atari800_Instance *inst, UBYTE esc_code);
+void ESC_Run_Ctx(Atari800_Instance *inst, UBYTE esc_code);
+void ESC_PatchOS_Ctx(Atari800_Instance *inst);
+void ESC_ClearAll_Ctx(Atari800_Instance *inst);
+void ESC_UpdatePatches_Ctx(Atari800_Instance *inst);
 
-/* Puts an escape sequence followed by the RTS instruction. */
-void ESC_AddEscRts(UWORD address, UBYTE esc_code, ESC_FunctionType function);
-
-/* Puts an escape sequence with an integrated RTS. */
-void ESC_AddEscRts2(UWORD address, UBYTE esc_code, ESC_FunctionType function);
-
-/* Unregisters an escape sequence. You must cleanup the Atari memory yourself. */
-void ESC_Remove(UBYTE esc_code);
-
-/* Handles an escape sequence. */
-void ESC_Run(UBYTE esc_code);
-
-/* Installs SIO patch and disables ROM checksum test. */
-void ESC_PatchOS(void);
-
-/* Unregisters all escape sequences */
-void ESC_ClearAll(void);
-
-/* Reinitializes patches after enable_*_patch change. */
-void ESC_UpdatePatches(void);
+#define ESC_Add(addr, code, fn)        ESC_Add_Ctx(Atari800_default, addr, code, fn)
+#define ESC_AddEscRts(addr, code, fn)  ESC_AddEscRts_Ctx(Atari800_default, addr, code, fn)
+#define ESC_AddEscRts2(addr, code, fn) ESC_AddEscRts2_Ctx(Atari800_default, addr, code, fn)
+#define ESC_Remove(code)               ESC_Remove_Ctx(Atari800_default, code)
+#define ESC_Run(code)                  ESC_Run_Ctx(Atari800_default, code)
+#define ESC_PatchOS()                  ESC_PatchOS_Ctx(Atari800_default)
+#define ESC_ClearAll()                 ESC_ClearAll_Ctx(Atari800_default)
+#define ESC_UpdatePatches()            ESC_UpdatePatches_Ctx(Atari800_default)
 
 #endif /* ESC_H_ */

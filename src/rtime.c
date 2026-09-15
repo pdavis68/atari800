@@ -38,19 +38,30 @@
 #include "rtime.h"
 #include "util.h"
 
-int RTIME_enabled = 1;
+/* Transitional Option C bridge: the per-instance RTIME state lives in
+   RTIME_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (RT = &inst->rtime, RTI = inst); inside this file the legacy
+   state names route through RT, so the _Ctx bodies operate on their own
+   instance. */
+static Atari800_Instance *RTI;
+static RTIME_state_t *RT;
 
-static int rtime_state = 0;
-				/* 0 = waiting for register # */
-				/* 1 = got register #, waiting for hi nybble */
-				/* 2 = got hi nybble, waiting for lo nybble */
-static int rtime_tmp = 0;
-static int rtime_tmp2 = 0;
+#define RTIME_PIN_CTX(inst) do { \
+	RTI = (inst); \
+	RT = &RTI->rtime; \
+} while (0)
 
-static UBYTE regset[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+/* Route the legacy state names through the pinned context. */
+#undef RTIME_enabled
+#define RTIME_enabled (RT->enabled)
+#define rtime_state (RT->state)
+#define rtime_tmp   (RT->tmp)
+#define rtime_tmp2  (RT->tmp2)
+#define regset      (RT->regset)
 
-int RTIME_ReadConfig(char *string, char *ptr)
+int RTIME_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	RTIME_PIN_CTX(inst);
 	if (strcmp(string, "RTIME") == 0) {
 		int value = Util_sscanbool(ptr);
 		if (value < 0)
@@ -61,13 +72,15 @@ int RTIME_ReadConfig(char *string, char *ptr)
 	return TRUE;
 }
 
-void RTIME_WriteConfig(FILE *fp)
+void RTIME_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	RTIME_PIN_CTX(inst);
 	fprintf(fp, "RTIME=%d\n", RTIME_enabled);
 }
 
-int RTIME_Initialise(int *argc, char *argv[])
+int RTIME_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	RTIME_PIN_CTX(inst);
 	int i;
 	int j;
 	for (i = j = 1; i < *argc; i++) {
@@ -147,8 +160,9 @@ static int gettime(int p)
 
 #endif /* defined(HAVE_WINDOWS_H) || (defined(HAVE_TIME) && defined(HAVE_LOCALTIME)) */
 
-UBYTE RTIME_GetByte(void)
+UBYTE RTIME_GetByte_Ctx(Atari800_Instance *inst)
 {
+	RTIME_PIN_CTX(inst);
 	switch (rtime_state) {
 	case 0:
 		/* Log_print("pretending rtime not busy, returning 0"); */
@@ -173,8 +187,9 @@ UBYTE RTIME_GetByte(void)
 	return 0;
 }
 
-void RTIME_PutByte(UBYTE byte)
+void RTIME_PutByte_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
+	RTIME_PIN_CTX(inst);
 	switch (rtime_state) {
 	case 0:
 		rtime_tmp = byte & 0x0f;

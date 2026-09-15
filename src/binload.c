@@ -34,24 +34,45 @@
 #include "memory.h"
 #include "sio.h"
 
-int BINLOAD_start_binloading = FALSE;
-int BINLOAD_loading_basic = 0;
-int BINLOAD_slow_xex_loading = FALSE;
-FILE *BINLOAD_bin_file = NULL;
+/* Transitional Option C bridge: the per-instance Binload state lives in
+   Binload_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (BL = &inst->binload, BLi = inst); inside this file the legacy
+   state names route through BL, so the _Ctx bodies operate on their own
+   instance. loader_cont, the escape handler that continues loading, is
+   registered as a context-free ESC_Add callback and pins the default
+   instance (like the other escape handlers) until the ESC machinery
+   carries a context. CPU register and memory accesses route through the
+   cpu.h/memory.h aliases (default instance) for now. */
+static Atari800_Instance *BLi;
+static Binload_state_t *BL;
 
-/* These variables are for slow XEX loading only. */
+#define BL_PIN_CTX(inst) do { \
+	BLi = (inst); \
+	BL = &BLi->binload; \
+} while (0)
 
-/* Number of CPU instructions elapsed since last loaded byte. */
-static unsigned int instr_elapsed = 0;
-int BINLOAD_wait_active=FALSE;
-/* Start and end address of the currently loaded segment. */
-static UWORD from = 0;
-static UWORD to = 0;
-/* Inticates that the next call to loader_cont will overwrite INITAD. */
-static int init2e3 = FALSE;
-/* Indicates that we are currently not during loading of a segment. */
-static int segfinished = TRUE;
-int BINLOAD_pause_loading;
+/* Route the legacy state names through the pinned context. */
+#undef BINLOAD_bin_file
+#undef BINLOAD_start_binloading
+#undef BINLOAD_loading_basic
+#undef BINLOAD_slow_xex_loading
+#undef BINLOAD_wait_active
+#undef BINLOAD_pause_loading
+#define BINLOAD_bin_file         (BL->bin_file)
+#define BINLOAD_start_binloading (BL->start_binloading)
+#define BINLOAD_loading_basic    (BL->loading_basic)
+#define BINLOAD_slow_xex_loading (BL->slow_xex_loading)
+#define BINLOAD_wait_active      (BL->wait_active)
+#define BINLOAD_pause_loading    (BL->pause_loading)
+#define instr_elapsed (BL->instr_elapsed)
+#define from          (BL->from)
+#define to            (BL->to)
+#define init2e3       (BL->init2e3)
+#define segfinished   (BL->segfinished)
+
+/* Context-free thunk for the ESC_Add handler table (pins the default
+   instance). Defined below. */
+static void loader_cont(void);
 
 /* Read a word from file */
 static int read_word(void)
@@ -72,8 +93,9 @@ static int read_word(void)
 }
 
 /* Start or continue loading */
-static void loader_cont(void)
+static void loader_cont_Ctx(Atari800_Instance *inst)
 {
+	BL_PIN_CTX(inst);
 	if (BINLOAD_bin_file == NULL)
 		return;
 	if (BINLOAD_start_binloading) {
@@ -114,7 +136,7 @@ static void loader_cont(void)
 				instr_elapsed++;
 				if ((instr_elapsed < 300) || BINLOAD_pause_loading) {
 					CPU_regS--;
-					ESC_Add((UWORD) (0x100 + CPU_regS), ESC_BINLOADER_CONT, loader_cont);
+					ESC_Add_Ctx(inst, (UWORD) (0x100 + CPU_regS), ESC_BINLOADER_CONT, loader_cont);
 					CPU_regS--;
 					CPU_regPC = CPU_regS + 1 + 0x100;
 					BINLOAD_wait_active = TRUE;
@@ -144,7 +166,7 @@ static void loader_cont(void)
 	} while (MEMORY_dGetByte(0x2e3) == 0xd7);
 
 	CPU_regS--;
-	ESC_Add((UWORD) (0x100 + CPU_regS), ESC_BINLOADER_CONT, loader_cont);
+	ESC_Add_Ctx(inst, (UWORD) (0x100 + CPU_regS), ESC_BINLOADER_CONT, loader_cont);
 	CPU_regS--;
 	MEMORY_dPutByte(0x0100 + CPU_regS--, 0x01);	/* high */
 	MEMORY_dPutByte(0x0100 + CPU_regS, CPU_regS + 1);	/* low */
@@ -156,9 +178,17 @@ static void loader_cont(void)
 	init2e3 = TRUE;
 }
 
-/* Fake boot sector to call loader_cont at boot time */
-int BINLOAD_LoaderStart(UBYTE *buffer)
+/* Context-free thunk for the ESC_Add handler table (pins the default
+   instance). */
+static void loader_cont(void)
 {
+	loader_cont_Ctx(Atari800_default);
+}
+
+/* Fake boot sector to call loader_cont at boot time */
+int BINLOAD_LoaderStart_Ctx(Atari800_Instance *inst, UBYTE *buffer)
+{
+	BL_PIN_CTX(inst);
 	buffer[0] = 0x00;	/* ignored */
 	buffer[1] = 0x01;	/* one boot sector */
 	buffer[2] = 0x00;	/* start at memory location 0x0700 */
@@ -167,7 +197,7 @@ int BINLOAD_LoaderStart(UBYTE *buffer)
 	buffer[5] = 0xe4;
 	buffer[6] = 0xf2;	/* ESC */
 	buffer[7] = ESC_BINLOADER_CONT;
-	ESC_Add(0x706, ESC_BINLOADER_CONT, loader_cont);
+	ESC_Add_Ctx(inst, 0x706, ESC_BINLOADER_CONT, loader_cont);
 	BINLOAD_wait_active = FALSE;
 	init2e3 = TRUE;
 	segfinished = TRUE;
@@ -175,9 +205,10 @@ int BINLOAD_LoaderStart(UBYTE *buffer)
 }
 
 /* Load BIN file, returns TRUE if ok */
-int BINLOAD_Loader(const char *filename)
+int BINLOAD_Loader_Ctx(Atari800_Instance *inst, const char *filename)
 {
 	UBYTE buf[2];
+	BL_PIN_CTX(inst);
 	if (BINLOAD_bin_file != NULL) {		/* close previously open file */
 		fclose(BINLOAD_bin_file);
 		BINLOAD_bin_file = NULL;

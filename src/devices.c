@@ -487,6 +487,8 @@ static int devbug = FALSE;
 
 /* Transitional Option C bridge: the per-instance Devices state lives in
    Devices_state_t (instance.h). Within devices.c the legacy global/static
+   names are aliases into the file-scope context pointer `DEV`, which is
+   pinned to the default instance until callers pass an instance
    names are aliases into the default instance (via
    Atari800_default->devices.*). */
 #undef Devices_enable_h_patch
@@ -500,17 +502,48 @@ static int devbug = FALSE;
 #undef Devices_h_current_dir
 #undef Devices_print_command
 #undef dev_b_status
-#define Devices_enable_h_patch (Atari800_default->devices.enable_h_patch)
-#define Devices_enable_p_patch (Atari800_default->devices.enable_p_patch)
-#define Devices_enable_r_patch (Atari800_default->devices.enable_r_patch)
-#define Devices_enable_b_patch (Atari800_default->devices.enable_b_patch)
-#define Devices_atari_h_dir    (Atari800_default->devices.atari_h_dir)
-#define Devices_h_read_only    (Atari800_default->devices.h_read_only)
-#define Devices_h_exe_path     (Atari800_default->devices.h_exe_path)
-#define Devices_h_device_name  (Atari800_default->devices.h_device_name)
-#define Devices_h_current_dir  (Atari800_default->devices.h_current_dir)
-#define Devices_print_command  (Atari800_default->devices.print_command)
-#define dev_b_status           (Atari800_default->devices.dev_b_status)
+static Devices_state_t *DEV;
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *DEVi;
+#define DEVICES_PIN_CTX(inst) ((void) (DEVi = (inst), DEV = &(inst)->devices))
+#define Devices_enable_h_patch (DEV->enable_h_patch)
+#define Devices_enable_p_patch (DEV->enable_p_patch)
+#define Devices_enable_r_patch (DEV->enable_r_patch)
+#define Devices_enable_b_patch (DEV->enable_b_patch)
+#define Devices_atari_h_dir    (DEV->atari_h_dir)
+#define Devices_h_read_only    (DEV->h_read_only)
+#define Devices_h_exe_path     (DEV->h_exe_path)
+#define Devices_h_device_name  (DEV->h_device_name)
+#define Devices_h_current_dir  (DEV->h_current_dir)
+#define Devices_print_command  (DEV->print_command)
+#define dev_b_status           (DEV->dev_b_status)
+
+/* The devices.h forwarding macros route legacy names to the default
+   instance; inside devices.c they are redefined to route to the instance
+   pinned by DEVICES_PIN_CTX() so the *_Ctx() bodies operate on their own
+   instance. */
+#undef Devices_Initialise
+#undef Devices_Exit
+#undef Devices_PatchOS
+#undef Devices_Frame
+#undef Devices_UpdatePatches
+#undef Devices_H_CountOpen
+#undef Devices_H_CloseAll
+#undef Devices_SetPrintCommand
+#undef Devices_UpdateHATABSEntry
+#undef Devices_RemoveHATABSEntry
+#undef Devices_SkipDeviceName
+#define Devices_Initialise(argc, argv) Devices_Initialise_Ctx(DEVi, argc, argv)
+#define Devices_Exit()                 Devices_Exit_Ctx(DEVi)
+#define Devices_PatchOS()              Devices_PatchOS_Ctx(DEVi)
+#define Devices_Frame()                Devices_Frame_Ctx(DEVi)
+#define Devices_UpdatePatches()        Devices_UpdatePatches_Ctx(DEVi)
+#define Devices_H_CountOpen()          Devices_H_CountOpen_Ctx(DEVi)
+#define Devices_H_CloseAll()           Devices_H_CloseAll_Ctx(DEVi)
+#define Devices_SetPrintCommand(cmd)   Devices_SetPrintCommand_Ctx(DEVi, cmd)
+#define Devices_UpdateHATABSEntry(dev, ea, ta)  Devices_UpdateHATABSEntry_Ctx(DEVi, dev, ea, ta)
+#define Devices_RemoveHATABSEntry(dev, ea, ta)  Devices_RemoveHATABSEntry_Ctx(DEVi, dev, ea, ta)
+#define Devices_SkipDeviceName()       Devices_SkipDeviceName_Ctx(DEVi)
 #define h_fp            (Atari800_default->devices.h_fp)
 #define h_textmode      (Atari800_default->devices.h_textmode)
 #define h_lastbyte      (Atari800_default->devices.h_lastbyte)
@@ -525,8 +558,9 @@ static int devbug = FALSE;
 
 Util_tmpbufdef(static, h_tmpbuf[8])
 
-int Devices_H_CountOpen(void)
+int Devices_H_CountOpen_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	int r = 0;
 	int i;
 	for (i = 0; i < 8; i++)
@@ -535,8 +569,9 @@ int Devices_H_CountOpen(void)
 	return r;
 }
 
-void Devices_H_CloseAll(void)
+void Devices_H_CloseAll_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	int i;
 	for (i = 0; i < 8; i++)
 		if (h_fp[i] != NULL) {
@@ -556,8 +591,9 @@ static void Devices_H_Init(void)
 	Devices_H_CloseAll();
 }
 
-int Devices_Initialise(int *argc, char *argv[])
+int Devices_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	DEVICES_PIN_CTX(inst);
 	int i;
 	int j;
 	for (i = j = 1; i < *argc; i++) {
@@ -627,8 +663,9 @@ int Devices_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void Devices_Exit(void)
+void Devices_Exit_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	Devices_H_CloseAll();
 }
 
@@ -660,8 +697,9 @@ static int Devices_IsValidForFilename(char ch)
 	}
 }
 
-UWORD Devices_SkipDeviceName(void)
+UWORD Devices_SkipDeviceName_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	UWORD bufadr;
 	for (bufadr = MEMORY_dGetWordAligned(Devices_ICBALZ); ; bufadr++) {
 		char c = (char) MEMORY_dGetByte(bufadr);
@@ -1829,8 +1867,9 @@ static void Devices_H_Special(void)
 /* P: device emulation --------------------------------------------------- */
 
 
-int Devices_SetPrintCommand(const char *command)
+int Devices_SetPrintCommand_Ctx(Atari800_Instance *inst, const char *command)
 {
+	DEVICES_PIN_CTX(inst);
 	const char *p = command;
 	int was_percent_s = FALSE;
 	while (*p != '\0') {
@@ -2376,8 +2415,9 @@ static void Devices_CloseBasicFile(void)
    We don't replace C: with H: now, so the cassette works even
    if H: is enabled.
 */
-int Devices_PatchOS(void)
+int Devices_PatchOS_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	/* addr points to the ROM table of handler vectors. */
 	UWORD addr;
 	int i;
@@ -2509,9 +2549,10 @@ int Devices_PatchOS(void)
 
 #define HATABS 0x31a
 
-UWORD Devices_UpdateHATABSEntry(char device, UWORD entry_address,
+UWORD Devices_UpdateHATABSEntry_Ctx(Atari800_Instance *inst, char device, UWORD entry_address,
 							   UWORD table_address)
 {
+	DEVICES_PIN_CTX(inst);
 	UWORD address;
 	if (entry_address != 0 && MEMORY_dGetByte(entry_address) == device)
 		return entry_address;
@@ -2532,9 +2573,10 @@ UWORD Devices_UpdateHATABSEntry(char device, UWORD entry_address,
 	return entry_address;
 }
 
-void Devices_RemoveHATABSEntry(char device, UWORD entry_address,
+void Devices_RemoveHATABSEntry_Ctx(Atari800_Instance *inst, char device, UWORD entry_address,
 							  UWORD table_address)
 {
+	DEVICES_PIN_CTX(inst);
 	if (entry_address != 0 && MEMORY_dGetByte(entry_address) == device
 		&& MEMORY_dGetWord(entry_address + 1) == table_address) {
 		MEMORY_dPutByte(entry_address, 0);
@@ -2582,8 +2624,9 @@ static UWORD b_entry_address = 0;
 #define B_PATCH_INIT    0xd1e3
 #define B_DEVICE_END    0xd1e5
 
-void Devices_Frame(void)
+void Devices_Frame_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	if (Devices_enable_h_patch)
 		h_entry_address = Devices_UpdateHATABSEntry(Devices_h_device_name, h_entry_address, H_TABLE_ADDRESS);
 
@@ -2597,8 +2640,9 @@ void Devices_Frame(void)
 }
 
 /* this is called when Devices_enable_h_patch is toggled */
-void Devices_UpdatePatches(void)
+void Devices_UpdatePatches_Ctx(Atari800_Instance *inst)
 {
+	DEVICES_PIN_CTX(inst);
 	if (Devices_enable_h_patch) {		/* enable H: device */
 		/* change memory attributes for the area, where we put
 		   the H: handler table and patches */

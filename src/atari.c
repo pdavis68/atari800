@@ -209,6 +209,18 @@ static Atari800_Instance default_instance_storage = {
 		.CB1 = 1,
 		.CB2 = 1,
 	},
+	.pbi = {
+		.fp_active = TRUE,
+	},
+	.esc = {
+		.enable_sio_patch = TRUE,
+	},
+	.binload = {
+		.segfinished = TRUE,
+	},
+	.rtime = {
+		.enabled = 1,
+	},
 	.devices = {
 		.enable_h_patch = TRUE,
 		.enable_p_patch = TRUE,

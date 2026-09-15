@@ -38,6 +38,8 @@
 
 /* Transitional Option C bridge: the per-instance cassette state lives in
    Cassette_state_t (instance.h). Within cassette.c the legacy global/static
+   names are aliases into the file-scope context pointer `CAS`, which is
+   pinned to the default instance until callers pass an instance
    names are aliases into the default instance (via
    Atari800_default->cassette.*). */
 #undef CASSETTE_filename
@@ -50,25 +52,80 @@
 #undef CASSETTE_record
 #undef CASSETTE_readable
 #undef CASSETTE_writable
-#define CASSETTE_filename    (Atari800_default->cassette.filename)
-#define CASSETTE_description (Atari800_default->cassette.description)
-#define CASSETTE_status      (Atari800_default->cassette.status)
-#define CASSETTE_hold_start           (Atari800_default->cassette.hold_start)
-#define CASSETTE_hold_start_on_reboot (Atari800_default->cassette.hold_start_on_reboot)
-#define CASSETTE_press_space          (Atari800_default->cassette.press_space)
-#define CASSETTE_write_protect        (Atari800_default->cassette.write_protect)
-#define CASSETTE_record               (Atari800_default->cassette.record)
-#define CASSETTE_readable             (Atari800_default->cassette.readable)
-#define CASSETTE_writable             (Atari800_default->cassette.writable)
-#define cassette_file      (Atari800_default->cassette.cassette_file)
-#define event_time_left    (Atari800_default->cassette.event_time_left)
-#define pending_serin      (Atari800_default->cassette.pending_serin)
-#define passing_gap        (Atari800_default->cassette.passing_gap)
-#define pending_serin_byte (Atari800_default->cassette.pending_serin_byte)
-#define serin_byte         (Atari800_default->cassette.serin_byte)
-#define cassette_gapdelay  (Atari800_default->cassette.cassette_gapdelay)
-#define cassette_motor     (Atari800_default->cassette.cassette_motor)
-#define eof_of_tape        (Atari800_default->cassette.eof_of_tape)
+static Cassette_state_t *CAS;
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *CASi;
+#define CASSETTE_PIN_CTX(inst) ((void) (CASi = (inst), CAS = &(inst)->cassette))
+#define CASSETTE_filename    (CAS->filename)
+#define CASSETTE_description (CAS->description)
+#define CASSETTE_status      (CAS->status)
+#define CASSETTE_hold_start           (CAS->hold_start)
+#define CASSETTE_hold_start_on_reboot (CAS->hold_start_on_reboot)
+#define CASSETTE_press_space          (CAS->press_space)
+#define CASSETTE_write_protect        (CAS->write_protect)
+#define CASSETTE_record               (CAS->record)
+#define CASSETTE_readable             (CAS->readable)
+#define CASSETTE_writable             (CAS->writable)
+#define cassette_file      (CAS->cassette_file)
+#define event_time_left    (CAS->event_time_left)
+#define pending_serin      (CAS->pending_serin)
+#define passing_gap        (CAS->passing_gap)
+#define pending_serin_byte (CAS->pending_serin_byte)
+#define serin_byte         (CAS->serin_byte)
+#define cassette_gapdelay  (CAS->cassette_gapdelay)
+#define cassette_motor     (CAS->cassette_motor)
+#define eof_of_tape        (CAS->eof_of_tape)
+
+/* The cassette.h forwarding macros route legacy names to the default
+   instance; inside cassette.c they are redefined to route to the instance
+   pinned by CASSETTE_PIN_CTX() so the *_Ctx() bodies operate on their own
+   instance. */
+#undef CASSETTE_Initialise
+#undef CASSETTE_Exit
+#undef CASSETTE_ReadConfig
+#undef CASSETTE_WriteConfig
+#undef CASSETTE_Insert
+#undef CASSETTE_Remove
+#undef CASSETTE_CreateCAS
+#undef CASSETTE_GetPosition
+#undef CASSETTE_GetSize
+#undef CASSETTE_Seek
+#undef CASSETTE_GetByte
+#undef CASSETTE_IOLineStatus
+#undef CASSETTE_PutByte
+#undef CASSETTE_TapeMotor
+#undef CASSETTE_ToggleWriteProtect
+#undef CASSETTE_ToggleRecord
+#undef CASSETTE_AddScanLine
+#undef CASSETTE_ResetPOKEY
+#undef CASSETTE_AddGap
+#undef CASSETTE_LeaderLoad
+#undef CASSETTE_LeaderSave
+#undef CASSETTE_ReadToMemory
+#undef CASSETTE_WriteFromMemory
+#define CASSETTE_Initialise(argc, argv)  CASSETTE_Initialise_Ctx(CASi, argc, argv)
+#define CASSETTE_Exit()                  CASSETTE_Exit_Ctx(CASi)
+#define CASSETTE_ReadConfig(str, ptr)    CASSETTE_ReadConfig_Ctx(CASi, str, ptr)
+#define CASSETTE_WriteConfig(fp)         CASSETTE_WriteConfig_Ctx(CASi, fp)
+#define CASSETTE_Insert(fn)              CASSETTE_Insert_Ctx(CASi, fn)
+#define CASSETTE_Remove()                CASSETTE_Remove_Ctx(CASi)
+#define CASSETTE_CreateCAS(fn, desc)     CASSETTE_CreateCAS_Ctx(CASi, fn, desc)
+#define CASSETTE_GetPosition()           CASSETTE_GetPosition_Ctx(CASi)
+#define CASSETTE_GetSize()               CASSETTE_GetSize_Ctx(CASi)
+#define CASSETTE_Seek(pos)               CASSETTE_Seek_Ctx(CASi, pos)
+#define CASSETTE_GetByte()               CASSETTE_GetByte_Ctx(CASi)
+#define CASSETTE_IOLineStatus()          CASSETTE_IOLineStatus_Ctx(CASi)
+#define CASSETTE_PutByte(byte)           CASSETTE_PutByte_Ctx(CASi, byte)
+#define CASSETTE_TapeMotor(onoff)        CASSETTE_TapeMotor_Ctx(CASi, onoff)
+#define CASSETTE_ToggleWriteProtect()    CASSETTE_ToggleWriteProtect_Ctx(CASi)
+#define CASSETTE_ToggleRecord()          CASSETTE_ToggleRecord_Ctx(CASi)
+#define CASSETTE_AddScanLine()           CASSETTE_AddScanLine_Ctx(CASi)
+#define CASSETTE_ResetPOKEY()            CASSETTE_ResetPOKEY_Ctx(CASi)
+#define CASSETTE_AddGap(gaptime)         CASSETTE_AddGap_Ctx(CASi, gaptime)
+#define CASSETTE_LeaderLoad()            CASSETTE_LeaderLoad_Ctx(CASi)
+#define CASSETTE_LeaderSave()            CASSETTE_LeaderSave_Ctx(CASi)
+#define CASSETTE_ReadToMemory(dest, len) CASSETTE_ReadToMemory_Ctx(CASi, dest, len)
+#define CASSETTE_WriteFromMemory(src, len) CASSETTE_WriteFromMemory_Ctx(CASi, src, len)
 
 /* Time till the end of the current tape event (byte or gap), in CPU ticks. */
 
@@ -100,8 +157,9 @@ static void UpdateFlags(void)
 	                    !CASSETTE_write_protect;
 }
 
-int CASSETTE_ReadConfig(char *string, char *ptr)
+int CASSETTE_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (strcmp(string, "CASSETTE_FILENAME") == 0)
 		Util_strlcpy(CASSETTE_filename, ptr, sizeof(CASSETTE_filename));
 	else if (strcmp(string, "CASSETTE_LOADED") == 0) {
@@ -120,15 +178,17 @@ int CASSETTE_ReadConfig(char *string, char *ptr)
 	return TRUE;
 }
 
-void CASSETTE_WriteConfig(FILE *fp)
+void CASSETTE_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	CASSETTE_PIN_CTX(inst);
 	fprintf(fp, "CASSETTE_FILENAME=%s\n", CASSETTE_filename);
 	fprintf(fp, "CASSETTE_LOADED=%d\n", CASSETTE_status != CASSETTE_STATUS_NONE);
 	fprintf(fp, "CASSETTE_WRITE_PROTECT=%d\n", CASSETTE_write_protect);
 }
 
-int CASSETTE_Initialise(int *argc, char *argv[])
+int CASSETTE_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	CASSETTE_PIN_CTX(inst);
 	int i;
 	int j;
 	int protect = FALSE; /* Is write-protect requested in command line? */
@@ -191,13 +251,15 @@ int CASSETTE_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void CASSETTE_Exit(void)
+void CASSETTE_Exit_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	CASSETTE_Remove();
 }
 
-int CASSETTE_Insert(const char *filename)
+int CASSETTE_Insert_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	CASSETTE_PIN_CTX(inst);
 	int writable;
 	char const *description;
 
@@ -227,8 +289,9 @@ int CASSETTE_Insert(const char *filename)
 	return TRUE;
 }
 
-void CASSETTE_Remove(void)
+void CASSETTE_Remove_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (cassette_file != NULL) {
 		IMG_TAPE_Close(cassette_file);
 		cassette_file = NULL;
@@ -238,7 +301,8 @@ void CASSETTE_Remove(void)
 	UpdateFlags();
 }
 
-int CASSETTE_CreateCAS(const char *filename, const char *description) {
+int CASSETTE_CreateCAS_Ctx(Atari800_Instance *inst, const char *filename, const char *description) {
+	CASSETTE_PIN_CTX(inst);
 	IMG_TAPE_t *file = IMG_TAPE_Create(filename, description);
 	if (file == NULL)
 		return FALSE;
@@ -261,22 +325,25 @@ int CASSETTE_CreateCAS(const char *filename, const char *description) {
 	return TRUE;
 }
 
-unsigned int CASSETTE_GetPosition(void)
+unsigned int CASSETTE_GetPosition_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (cassette_file == NULL)
 		return 0;
 	return IMG_TAPE_GetPosition(cassette_file) + 1;
 }
 
-unsigned int CASSETTE_GetSize(void)
+unsigned int CASSETTE_GetSize_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (cassette_file == NULL)
 		return 0;
 	return IMG_TAPE_GetSize(cassette_file);
 }
 
-void CASSETTE_Seek(unsigned int position)
+void CASSETTE_Seek_Ctx(Atari800_Instance *inst, unsigned int position)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (cassette_file != NULL) {
 		if (position > 0)
 			position --;
@@ -291,13 +358,15 @@ void CASSETTE_Seek(unsigned int position)
 	}
 }
 
-int CASSETTE_GetByte(void)
+int CASSETTE_GetByte_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	return serin_byte;
 }
 
-int CASSETTE_IOLineStatus(void)
+int CASSETTE_IOLineStatus_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	/* if motor off and EOF return always 1 (equivalent the mark tone) */
 	if (!CASSETTE_readable || CASSETTE_record) {
 		return 1;
@@ -306,14 +375,16 @@ int CASSETTE_IOLineStatus(void)
 	return IMG_TAPE_SerinStatus(cassette_file, event_time_left);
 }
 
-void CASSETTE_PutByte(int byte)
+void CASSETTE_PutByte_Ctx(Atari800_Instance *inst, int byte)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (!ESC_enable_sio_patch && CASSETTE_writable && CASSETTE_record)
 		IMG_TAPE_WriteByte(cassette_file, byte, POKEY_AUDF[POKEY_CHAN3] + POKEY_AUDF[POKEY_CHAN4]*0x100);
 }
 
-void CASSETTE_TapeMotor(int onoff)
+void CASSETTE_TapeMotor_Ctx(Atari800_Instance *inst, int onoff)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (cassette_motor != onoff) {
 		if (CASSETTE_record && CASSETTE_writable)
 			/* Recording disabled, flush the tape */
@@ -323,8 +394,9 @@ void CASSETTE_TapeMotor(int onoff)
 	}
 }
 
-int CASSETTE_ToggleWriteProtect(void)
+int CASSETTE_ToggleWriteProtect_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (CASSETTE_status != CASSETTE_STATUS_READ_WRITE)
 		return FALSE;
 	CASSETTE_write_protect = !CASSETTE_write_protect;
@@ -332,8 +404,9 @@ int CASSETTE_ToggleWriteProtect(void)
 	return TRUE;
 }
 
-int CASSETTE_ToggleRecord(void)
+int CASSETTE_ToggleRecord_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (CASSETTE_status == CASSETTE_STATUS_NONE)
 		return FALSE;
 	CASSETTE_record = !CASSETTE_record;
@@ -388,8 +461,9 @@ static int CassetteRead(int num_ticks)
 	return FALSE;
 }
 
-int CASSETTE_AddScanLine(void)
+int CASSETTE_AddScanLine_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	/* increment elapsed cassette time */
 	if (CASSETTE_record) {
 		CassetteWrite(114);
@@ -398,8 +472,9 @@ int CASSETTE_AddScanLine(void)
 		return CassetteRead(114);
 }
 
-void CASSETTE_ResetPOKEY(void)
+void CASSETTE_ResetPOKEY_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	/* Resetting POKEY stops any serial transmission. */
 	pending_serin = FALSE;
 	pending_serin_byte = 0xff;
@@ -407,8 +482,9 @@ void CASSETTE_ResetPOKEY(void)
 
 /* --- Functions for loading/saving with SIO patch --- */
 
-int CASSETTE_AddGap(int gaptime)
+int CASSETTE_AddGap_Ctx(Atari800_Instance *inst, int gaptime)
 {
+	CASSETTE_PIN_CTX(inst);
 	cassette_gapdelay += gaptime;
 	if (cassette_gapdelay < 0)
 		cassette_gapdelay = 0;
@@ -416,8 +492,9 @@ int CASSETTE_AddGap(int gaptime)
 }
 
 /* Indicates that a loading leader is expected by the OS */
-void CASSETTE_LeaderLoad(void)
+void CASSETTE_LeaderLoad_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (CASSETTE_record)
 		CASSETTE_ToggleRecord();
 	CASSETTE_TapeMotor(TRUE);
@@ -425,16 +502,18 @@ void CASSETTE_LeaderLoad(void)
 }
 
 /* indicates that a save leader is written by the OS */
-void CASSETTE_LeaderSave(void)
+void CASSETTE_LeaderSave_Ctx(Atari800_Instance *inst)
 {
+	CASSETTE_PIN_CTX(inst);
 	if (!CASSETTE_record)
 	CASSETTE_ToggleRecord();
 	CASSETTE_TapeMotor(TRUE);
 	cassette_gapdelay = 19200;
 }
 
-int CASSETTE_ReadToMemory(UWORD dest_addr, int length)
+int CASSETTE_ReadToMemory_Ctx(Atari800_Instance *inst, UWORD dest_addr, int length)
 {
+	CASSETTE_PIN_CTX(inst);
 	CASSETTE_TapeMotor(1);
 	if (!CASSETTE_readable)
 		return 0;
@@ -463,8 +542,9 @@ int CASSETTE_ReadToMemory(UWORD dest_addr, int length)
 	}
 }
 
-int CASSETTE_WriteFromMemory(UWORD src_addr, int length)
+int CASSETTE_WriteFromMemory_Ctx(Atari800_Instance *inst, UWORD src_addr, int length)
 {
+	CASSETTE_PIN_CTX(inst);
 	int result;
 	CASSETTE_TapeMotor(1);
 	if (!CASSETTE_writable)

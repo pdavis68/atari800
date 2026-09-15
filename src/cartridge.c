@@ -52,23 +52,64 @@
 
 /* Transitional Option C bridge: the per-instance cartridge state lives in
    Cartridge_state_t (instance.h). Within cartridge.c the legacy global names
-   are aliases into the default instance (via Atari800_default->cartridge.*). */
+   are aliases into the file-scope context pointer `CARTp`, which is pinned
+   to the default instance until callers pass an instance explicitly. */
+static Cartridge_state_t *CARTp;
+static Atari800_Instance *CARTi;
+/* Pin the context to the given instance (set from the *_Ctx() argument).
+   The instance is zero-initialised, so active_cart starts NULL; pin it to
+   the main cartridge on first use. */
+#define CARTRIDGE_PIN_CTX(inst) do { \
+	CARTi = (inst); \
+	CARTp = &(inst)->cartridge; \
+	if (active_cart == NULL) \
+		active_cart = &CARTRIDGE_main; \
+} while (0)
 #undef CARTRIDGE_autoreboot
 #undef CARTRIDGE_main
 #undef CARTRIDGE_piggyback
-#define CARTRIDGE_autoreboot (Atari800_default->cartridge.autoreboot)
-#define CARTRIDGE_main     (Atari800_default->cartridge.main)
-#define CARTRIDGE_piggyback (Atari800_default->cartridge.piggyback)
-/* The default instance is zero-initialised, so active_cart starts NULL;
-   pin it to the main cartridge on first use. */
+#define CARTRIDGE_autoreboot (CARTp->autoreboot)
+#define CARTRIDGE_main     (CARTp->main)
+#define CARTRIDGE_piggyback (CARTp->piggyback)
 #undef active_cart
-static void CARTRIDGE_PIN_CTX(void)
-{
-	Cartridge_state_t *c = &Atari800_default->cartridge;
-	if (c->active_cart == NULL)
-		c->active_cart = &c->main;
-}
-#define active_cart (Atari800_default->cartridge.active_cart)
+#define active_cart (CARTp->active_cart)
+
+/* The cartridge.h forwarding macros route legacy names to the default
+   instance; inside cartridge.c they are redefined to route to the instance
+   pinned by CARTRIDGE_PIN_CTX() so the *_Ctx() bodies operate on their own
+   instance. */
+#undef CARTRIDGE_Initialise
+#undef CARTRIDGE_Exit
+#undef CARTRIDGE_Insert
+#undef CARTRIDGE_InsertAutoReboot
+#undef CARTRIDGE_Insert_Second
+#undef CARTRIDGE_SetType
+#undef CARTRIDGE_SetTypeAutoReboot
+#undef CARTRIDGE_Remove
+#undef CARTRIDGE_RemoveAutoReboot
+#undef CARTRIDGE_Remove_Second
+#undef CARTRIDGE_ColdStart
+#undef CARTRIDGE_StateSave
+#undef CARTRIDGE_StateRead
+#undef CARTRIDGE_ReadConfig
+#undef CARTRIDGE_WriteConfig
+#undef CARTRIDGE_UpdateState
+#define CARTRIDGE_Initialise(argc, argv)      CARTRIDGE_Initialise_Ctx(CARTi, argc, argv)
+#define CARTRIDGE_Exit()                      CARTRIDGE_Exit_Ctx(CARTi)
+#define CARTRIDGE_Insert(fn)                  CARTRIDGE_Insert_Ctx(CARTi, fn)
+#define CARTRIDGE_InsertAutoReboot(fn)        CARTRIDGE_InsertAutoReboot_Ctx(CARTi, fn)
+#define CARTRIDGE_Insert_Second(fn)           CARTRIDGE_Insert_Second_Ctx(CARTi, fn)
+#define CARTRIDGE_SetType(cart, type)         CARTRIDGE_SetType_Ctx(CARTi, cart, type)
+#define CARTRIDGE_SetTypeAutoReboot(cart, t)  CARTRIDGE_SetTypeAutoReboot_Ctx(CARTi, cart, t)
+#define CARTRIDGE_Remove()                    CARTRIDGE_Remove_Ctx(CARTi)
+#define CARTRIDGE_RemoveAutoReboot()          CARTRIDGE_RemoveAutoReboot_Ctx(CARTi)
+#define CARTRIDGE_Remove_Second()             CARTRIDGE_Remove_Second_Ctx(CARTi)
+#define CARTRIDGE_ColdStart()                 CARTRIDGE_ColdStart_Ctx(CARTi)
+#define CARTRIDGE_StateSave()                 CARTRIDGE_StateSave_Ctx(CARTi)
+#define CARTRIDGE_StateRead(version)          CARTRIDGE_StateRead_Ctx(CARTi, version)
+#define CARTRIDGE_ReadConfig(str, ptr)        CARTRIDGE_ReadConfig_Ctx(CARTi, str, ptr)
+#define CARTRIDGE_WriteConfig(fp)             CARTRIDGE_WriteConfig_Ctx(CARTi, fp)
+#define CARTRIDGE_UpdateState(cart, old)      CARTRIDGE_UpdateState_Ctx(CARTi, cart, old)
 
 static int CartIsFor5200(int type)
 {
@@ -493,9 +534,9 @@ static void SwitchBank(int old_state)
 #endif
 }
 
-void CARTRIDGE_UpdateState(CARTRIDGE_image_t *cart, int old_state)
+void CARTRIDGE_UpdateState_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int old_state)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_PIN_CTX(inst);
 	if (cart == active_cart)
 		SwitchBank(old_state);
 }
@@ -1292,7 +1333,12 @@ static void PutByte(CARTRIDGE_image_t *cart, UWORD addr, UBYTE byte)
 /* a read from D500-D5FF area */
 UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects)
 {
-	CARTRIDGE_PIN_CTX();
+	return CARTRIDGE_GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+UBYTE CARTRIDGE_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
+{
+	CARTRIDGE_PIN_CTX(inst);
 #ifdef AF80
 	if (AF80_enabled) {
 		return AF80_D5GetByte(addr, no_side_effects);
@@ -1304,7 +1350,7 @@ UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects)
 	}
 #endif
 	if (RTIME_enabled && (addr == 0xd5b8 || addr == 0xd5b9))
-		return RTIME_GetByte();
+		return RTIME_GetByte_Ctx(CARTi);
 #ifdef IDE
 	if (IDE_enabled && (addr <= 0xd50f))
 		return IDE_GetByte(addr, no_side_effects);
@@ -1317,7 +1363,12 @@ UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects)
 /* a write to D500-D5FF area */
 void CARTRIDGE_PutByte(UWORD addr, UBYTE byte)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_PutByte_Ctx(Atari800_default, addr, byte);
+}
+
+void CARTRIDGE_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
+{
+	CARTRIDGE_PIN_CTX(inst);
 #ifdef AF80
 	if (AF80_enabled) {
 		AF80_D5PutByte(addr,byte);
@@ -1333,7 +1384,7 @@ void CARTRIDGE_PutByte(UWORD addr, UBYTE byte)
 	}
 #endif
 	if (RTIME_enabled && (addr == 0xd5b8 || addr == 0xd5b9)) {
-		RTIME_PutByte(byte);
+		RTIME_PutByte_Ctx(CARTi, byte);
 	}
 #ifdef IDE
 	if (IDE_enabled && (addr <= 0xd50f)) {
@@ -1417,7 +1468,12 @@ static void access_5200SuperCart(UWORD addr)
 
 UBYTE CARTRIDGE_BountyBob1GetByte(UWORD addr, int no_side_effects)
 {
-	CARTRIDGE_PIN_CTX();
+	return CARTRIDGE_BountyBob1GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+UBYTE CARTRIDGE_BountyBob1GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	if (!no_side_effects)
 		access_BountyBob1(addr);
 	return MEMORY_dGetByte(addr);
@@ -1425,7 +1481,12 @@ UBYTE CARTRIDGE_BountyBob1GetByte(UWORD addr, int no_side_effects)
 
 UBYTE CARTRIDGE_BountyBob2GetByte(UWORD addr, int no_side_effects)
 {
-	CARTRIDGE_PIN_CTX();
+	return CARTRIDGE_BountyBob2GetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+UBYTE CARTRIDGE_BountyBob2GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	if (!no_side_effects)
 		access_BountyBob2(addr);
 	return MEMORY_dGetByte(addr);
@@ -1433,7 +1494,12 @@ UBYTE CARTRIDGE_BountyBob2GetByte(UWORD addr, int no_side_effects)
 
 UBYTE CARTRIDGE_5200SuperCartGetByte(UWORD addr, int no_side_effects)
 {
-	CARTRIDGE_PIN_CTX();
+	return CARTRIDGE_5200SuperCartGetByte_Ctx(Atari800_default, addr, no_side_effects);
+}
+
+UBYTE CARTRIDGE_5200SuperCartGetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	if (!no_side_effects)
 		access_5200SuperCart(addr);
 	return MEMORY_dGetByte(addr);
@@ -1441,19 +1507,34 @@ UBYTE CARTRIDGE_5200SuperCartGetByte(UWORD addr, int no_side_effects)
 
 void CARTRIDGE_BountyBob1PutByte(UWORD addr, UBYTE value)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_BountyBob1PutByte_Ctx(Atari800_default, addr, value);
+}
+
+void CARTRIDGE_BountyBob1PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	access_BountyBob1(addr);
 }
 
 void CARTRIDGE_BountyBob2PutByte(UWORD addr, UBYTE value)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_BountyBob2PutByte_Ctx(Atari800_default, addr, value);
+}
+
+void CARTRIDGE_BountyBob2PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	access_BountyBob2(addr);
 }
 
 void CARTRIDGE_5200SuperCartPutByte(UWORD addr, UBYTE value)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_5200SuperCartPutByte_Ctx(Atari800_default, addr, value);
+}
+
+void CARTRIDGE_5200SuperCartPutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value)
+{
+	CARTRIDGE_PIN_CTX(inst);
 	access_5200SuperCart(addr);
 }
 
@@ -1711,8 +1792,9 @@ static void AutoReboot(void)
 		Atari800_Coldstart();
 }
 
-void CARTRIDGE_SetType(CARTRIDGE_image_t *cart, int type)
+void CARTRIDGE_SetType_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int type)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	cart->type = type;
 	if (type == CARTRIDGE_NONE)
 		/* User cancelled setting the cartridge's type - the cartridge
@@ -1721,16 +1803,17 @@ void CARTRIDGE_SetType(CARTRIDGE_image_t *cart, int type)
 	InitCartridge(cart);
 }
 
-void CARTRIDGE_SetTypeAutoReboot(CARTRIDGE_image_t *cart, int type)
+void CARTRIDGE_SetTypeAutoReboot_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int type)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	CARTRIDGE_SetType(cart, type);
 	/* We don't want to autoreboot on inserting the piggyback cartridge. */
 	if (cart != &CARTRIDGE_piggyback)
 		AutoReboot();
 }
 
-void CARTRIDGE_ColdStart(void) {
-	CARTRIDGE_PIN_CTX();
+void CARTRIDGE_ColdStart_Ctx(Atari800_Instance *inst) {
+	CARTRIDGE_PIN_CTX(inst);
 	active_cart = &CARTRIDGE_main;
 	ResetCartState(&CARTRIDGE_main);
 	ResetCartState(&CARTRIDGE_piggyback);
@@ -1861,47 +1944,54 @@ static int InsertCartridge(const char *filename, CARTRIDGE_image_t *cart)
 	return kb;
 }
 
-int CARTRIDGE_Insert(const char *filename)
+int CARTRIDGE_Insert_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	/* remove currently inserted cart */
 	CARTRIDGE_Remove();
 	return InsertCartridge(filename, &CARTRIDGE_main);
 }
 
-int CARTRIDGE_InsertAutoReboot(const char *filename)
+int CARTRIDGE_InsertAutoReboot_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	int result = CARTRIDGE_Insert(filename);
 	AutoReboot();
 	return result;
 }
 
-int CARTRIDGE_Insert_Second(const char *filename)
+int CARTRIDGE_Insert_Second_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	/* remove currently inserted cart */
 	CARTRIDGE_Remove_Second();
 	return InsertCartridge(filename, &CARTRIDGE_piggyback);
 }
 
-void CARTRIDGE_Remove(void)
+void CARTRIDGE_Remove_Ctx(Atari800_Instance *inst)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	active_cart = &CARTRIDGE_main;
 	CARTRIDGE_Remove_Second();
 	RemoveCart(&CARTRIDGE_main);
 }
 
-void CARTRIDGE_RemoveAutoReboot(void)
+void CARTRIDGE_RemoveAutoReboot_Ctx(Atari800_Instance *inst)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	CARTRIDGE_Remove();
 	AutoReboot();
 }
 
-void CARTRIDGE_Remove_Second(void)
+void CARTRIDGE_Remove_Second_Ctx(Atari800_Instance *inst)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	RemoveCart(&CARTRIDGE_piggyback);
 }
 
-int CARTRIDGE_ReadConfig(char *string, char *ptr)
+int CARTRIDGE_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	if (strcmp(string, "CARTRIDGE_FILENAME") == 0) {
 		Util_strlcpy(CARTRIDGE_main.filename, ptr, sizeof(CARTRIDGE_main.filename));
 		if (CARTRIDGE_main.type == CARTRIDGE_NONE)
@@ -1934,8 +2024,9 @@ int CARTRIDGE_ReadConfig(char *string, char *ptr)
 	return TRUE;
 }
 
-void CARTRIDGE_WriteConfig(FILE *fp)
+void CARTRIDGE_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	fprintf(fp, "CARTRIDGE_FILENAME=%s\n", CARTRIDGE_main.filename);
 	fprintf(fp, "CARTRIDGE_TYPE=%d\n", CARTRIDGE_main.type);
 	fprintf(fp, "CARTRIDGE_PIGGYBACK_FILENAME=%s\n", CARTRIDGE_piggyback.filename);
@@ -1960,9 +2051,9 @@ static void InitInsert(CARTRIDGE_image_t *cart)
 	}
 }
 
-int CARTRIDGE_Initialise(int *argc, char *argv[])
+int CARTRIDGE_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_PIN_CTX(inst);
 	int i;
 	int j;
 	int help_only = FALSE;
@@ -2057,16 +2148,17 @@ int CARTRIDGE_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void CARTRIDGE_Exit(void)
+void CARTRIDGE_Exit_Ctx(Atari800_Instance *inst)
 {
+	CARTRIDGE_PIN_CTX(inst);
 	CARTRIDGE_Remove(); /* Removes both cartridges */
 }
 
 #ifndef BASIC
 
-void CARTRIDGE_StateRead(UBYTE version)
+void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_PIN_CTX(inst);
 	int saved_type = CARTRIDGE_NONE;
 	char filename[FILENAME_MAX];
 
@@ -2138,9 +2230,9 @@ void CARTRIDGE_StateRead(UBYTE version)
 	MapActiveCart();
 }
 
-void CARTRIDGE_StateSave(void)
+void CARTRIDGE_StateSave_Ctx(Atari800_Instance *inst)
 {
-	CARTRIDGE_PIN_CTX();
+	CARTRIDGE_PIN_CTX(inst);
 	int cart_save = CARTRIDGE_main.type;
 	
 	if (CARTRIDGE_piggyback.type != CARTRIDGE_NONE)

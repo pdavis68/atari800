@@ -69,7 +69,9 @@
 #define BOOT_SECTORS_SIO2PC		2
 /* Transitional Option C bridge: the per-instance SIO state lives in
    SIO_state_t (instance.h). Within sio.c the legacy global/static names are
-   aliases into the default instance (via Atari800_default->sio.*). */
+   aliases into the file-scope context pointer `SIOp`, which is pinned to the
+   default instance until callers pass an instance explicitly. */
+static SIO_state_t *SIOp;
 #undef SIO_status
 #undef SIO_drive_status
 #undef SIO_filename
@@ -79,30 +81,74 @@
 #undef SIO_last_sector
 #undef SIO_format_sectorcount
 #undef SIO_format_sectorsize
-#define SIO_status      (Atari800_default->sio.status)
-#define SIO_drive_status (Atari800_default->sio.drive_status)
-#define SIO_filename    (Atari800_default->sio.filename)
-#define SIO_last_op      (Atari800_default->sio.last_op)
-#define SIO_last_op_time (Atari800_default->sio.last_op_time)
-#define SIO_last_drive   (Atari800_default->sio.last_drive)
-#define SIO_last_sector  (Atari800_default->sio.last_sector)
-#define SIO_format_sectorcount (Atari800_default->sio.format_sectorcount)
-#define SIO_format_sectorsize  (Atari800_default->sio.format_sectorsize)
-#define boot_sectors_type (Atari800_default->sio.boot_sectors_type)
-#define image_type        (Atari800_default->sio.image_type)
-#define disk              (Atari800_default->sio.disk)
-#define sectorcount       (Atari800_default->sio.sectorcount)
-#define sectorsize        (Atari800_default->sio.sectorsize)
-#define io_success        (Atari800_default->sio.io_success)
-#define additional_info   (Atari800_default->sio.additional_info)
-#define CommandFrame      (Atari800_default->sio.CommandFrame)
-#define CommandIndex      (Atari800_default->sio.CommandIndex)
-#define DataBuffer        (Atari800_default->sio.DataBuffer)
-#define DataIndex         (Atari800_default->sio.DataIndex)
-#define TransferStatus    (Atari800_default->sio.TransferStatus)
-#define ExpectedBytes     (Atari800_default->sio.ExpectedBytes)
-#define delay_counter     (Atari800_default->sio.delay_counter)
-#define last_ypos         (Atari800_default->sio.last_ypos)
+/* Pin the context to the given instance (set from the *_Ctx() argument). */
+static Atari800_Instance *SIOi;
+#define SIO_PIN_CTX(inst) ((void) (SIOi = (inst), SIOp = &(inst)->sio))
+#define SIO_status      (SIOp->status)
+#define SIO_drive_status (SIOp->drive_status)
+#define SIO_filename    (SIOp->filename)
+#define SIO_last_op      (SIOp->last_op)
+#define SIO_last_op_time (SIOp->last_op_time)
+#define SIO_last_drive   (SIOp->last_drive)
+#define SIO_last_sector  (SIOp->last_sector)
+#define SIO_format_sectorcount (SIOp->format_sectorcount)
+#define SIO_format_sectorsize  (SIOp->format_sectorsize)
+#define boot_sectors_type (SIOp->boot_sectors_type)
+#define image_type        (SIOp->image_type)
+#define disk              (SIOp->disk)
+#define sectorcount       (SIOp->sectorcount)
+#define sectorsize        (SIOp->sectorsize)
+#define io_success        (SIOp->io_success)
+#define additional_info   (SIOp->additional_info)
+#define CommandFrame      (SIOp->CommandFrame)
+#define CommandIndex      (SIOp->CommandIndex)
+#define DataBuffer        (SIOp->DataBuffer)
+#define DataIndex         (SIOp->DataIndex)
+#define TransferStatus    (SIOp->TransferStatus)
+#define ExpectedBytes     (SIOp->ExpectedBytes)
+#define delay_counter     (SIOp->delay_counter)
+#define last_ypos         (SIOp->last_ypos)
+
+/* The sio.h forwarding macros route legacy names to the default instance;
+   inside sio.c they are redefined to route to the instance pinned by
+   SIO_PIN_CTX() so the *_Ctx() bodies operate on their own instance. */
+#undef SIO_Initialise
+#undef SIO_Exit
+#undef SIO_Mount
+#undef SIO_Dismount
+#undef SIO_DisableDrive
+#undef SIO_RotateDisks
+#undef SIO_Handler
+#undef SIO_SwitchCommandFrame
+#undef SIO_PutByte
+#undef SIO_GetByte
+#undef SIO_SizeOfSector
+#undef SIO_ReadSector
+#undef SIO_WriteSector
+#undef SIO_FormatDisk
+#undef SIO_ReadStatusBlock
+#undef SIO_WriteStatusBlock
+#undef SIO_DriveStatus
+#undef SIO_StateSave
+#undef SIO_StateRead
+#define SIO_Initialise(argc, argv)        SIO_Initialise_Ctx(SIOi, argc, argv)
+#define SIO_Exit()                        SIO_Exit_Ctx(SIOi)
+#define SIO_Mount(diskno, fn, ro)         SIO_Mount_Ctx(SIOi, diskno, fn, ro)
+#define SIO_Dismount(diskno)              SIO_Dismount_Ctx(SIOi, diskno)
+#define SIO_DisableDrive(diskno)          SIO_DisableDrive_Ctx(SIOi, diskno)
+#define SIO_RotateDisks()                 SIO_RotateDisks_Ctx(SIOi)
+#define SIO_SwitchCommandFrame(onoff)     SIO_SwitchCommandFrame_Ctx(SIOi, onoff)
+#define SIO_PutByte(byte)                 SIO_PutByte_Ctx(SIOi, byte)
+#define SIO_GetByte()                     SIO_GetByte_Ctx(SIOi)
+#define SIO_SizeOfSector(unit, sec, sz, ofs) SIO_SizeOfSector_Ctx(SIOi, unit, sec, sz, ofs)
+#define SIO_ReadSector(unit, sec, buf)    SIO_ReadSector_Ctx(SIOi, unit, sec, buf)
+#define SIO_WriteSector(unit, sec, buf)   SIO_WriteSector_Ctx(SIOi, unit, sec, buf)
+#define SIO_FormatDisk(unit, buf, ss, sc) SIO_FormatDisk_Ctx(SIOi, unit, buf, ss, sc)
+#define SIO_ReadStatusBlock(unit, buf)    SIO_ReadStatusBlock_Ctx(SIOi, unit, buf)
+#define SIO_WriteStatusBlock(unit, buf)   SIO_WriteStatusBlock_Ctx(SIOi, unit, buf)
+#define SIO_DriveStatus(unit, buf)        SIO_DriveStatus_Ctx(SIOi, unit, buf)
+#define SIO_StateSave()                   SIO_StateSave_Ctx(SIOi)
+#define SIO_StateRead()                   SIO_StateRead_Ctx(SIOi)
 #define IMAGE_TYPE_XFD  0
 #define IMAGE_TYPE_ATR  1
 #define IMAGE_TYPE_PRO  2
@@ -197,8 +243,16 @@ int NetSIO_GetByte(void);
 
 int ignore_header_writeprotect = FALSE;
 
-int SIO_Initialise(int *argc, char *argv[])
+/* SIO_Handler is registered as a function pointer (ESC_AddEscRts in esc.c),
+   so it must remain a real function; it pins the default instance. */
+void SIO_Handler(void)
 {
+	SIO_Handler_Ctx(Atari800_default);
+}
+
+int SIO_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
+{
+	SIO_PIN_CTX(inst);
 	int i;
 	for (i = 0; i < SIO_MAX_DRIVES; i++) {
 		strcpy(SIO_filename[i], "Off");
@@ -212,15 +266,17 @@ int SIO_Initialise(int *argc, char *argv[])
 }
 
 /* umount disks so temporary files are deleted */
-void SIO_Exit(void)
+void SIO_Exit_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	int i;
 	for (i = 1; i <= SIO_MAX_DRIVES; i++)
 		SIO_Dismount(i);
 }
 
-int SIO_Mount(int diskno, const char *filename, int b_open_readonly)
+int SIO_Mount_Ctx(Atari800_Instance *inst, int diskno, const char *filename, int b_open_readonly)
 {
+	SIO_PIN_CTX(inst);
 	FILE *f = NULL;
 	SIO_UnitStatus status = SIO_READ_WRITE;
 	struct AFILE_ATR_Header header;
@@ -550,8 +606,9 @@ int SIO_Mount(int diskno, const char *filename, int b_open_readonly)
 	return TRUE;
 }
 
-void SIO_Dismount(int diskno)
+void SIO_Dismount_Ctx(Atari800_Instance *inst, int diskno)
 {
+	SIO_PIN_CTX(inst);
 	if (disk[diskno - 1] != NULL) {
 		Util_fclose(disk[diskno - 1], sio_tmpbuf[diskno - 1]);
 		disk[diskno - 1] = NULL;
@@ -568,15 +625,17 @@ void SIO_Dismount(int diskno)
 	}
 }
 
-void SIO_DisableDrive(int diskno)
+void SIO_DisableDrive_Ctx(Atari800_Instance *inst, int diskno)
 {
+	SIO_PIN_CTX(inst);
 	SIO_Dismount(diskno);
 	SIO_drive_status[diskno - 1] = SIO_OFF;
 	strcpy(SIO_filename[diskno - 1], "Off");
 }
 
-void SIO_SizeOfSector(UBYTE unit, int sector, int *sz, ULONG *ofs)
+void SIO_SizeOfSector_Ctx(Atari800_Instance *inst, UBYTE unit, int sector, int *sz, ULONG *ofs)
 {
+	SIO_PIN_CTX(inst);
 	int size;
 	ULONG offset;
 	int header_size = (image_type[unit] == IMAGE_TYPE_ATR ? 16 : 0);
@@ -642,11 +701,12 @@ static int SeekSector(int unit, int sector)
 }
 
 /* Unit counts from zero up */
-int SIO_ReadSector(int unit, int sector, UBYTE *buffer)
+int SIO_ReadSector_Ctx(Atari800_Instance *inst, int unit, int sector, UBYTE *buffer)
 {
+	SIO_PIN_CTX(inst);
 	int size;
 	if (BINLOAD_start_binloading)
-		return BINLOAD_LoaderStart(buffer);
+		return BINLOAD_LoaderStart_Ctx(inst, buffer);
 
 	io_success[unit] = -1;
 	if (SIO_drive_status[unit] == SIO_OFF)
@@ -828,8 +888,9 @@ int SIO_ReadSector(int unit, int sector, UBYTE *buffer)
 	return 'C';
 }
 
-int SIO_WriteSector(int unit, int sector, const UBYTE *buffer)
+int SIO_WriteSector_Ctx(Atari800_Instance *inst, int unit, int sector, const UBYTE *buffer)
 {
+	SIO_PIN_CTX(inst);
 	int size;
 	io_success[unit] = -1;
 	if (SIO_drive_status[unit] == SIO_OFF)
@@ -894,8 +955,9 @@ int SIO_WriteSector(int unit, int sector, const UBYTE *buffer)
 	return 'C';
 }
 
-int SIO_FormatDisk(int unit, UBYTE *buffer, int sectsize, int sectcount)
+int SIO_FormatDisk_Ctx(Atari800_Instance *inst, int unit, UBYTE *buffer, int sectsize, int sectcount)
 {
+	SIO_PIN_CTX(inst);
 	char fname[FILENAME_MAX];
 	int is_atr;
 	int save_boot_sectors_type;
@@ -971,8 +1033,9 @@ int SIO_FormatDisk(int unit, UBYTE *buffer, int sectsize, int sectcount)
    (previously sectorsize/sectorcount were used which could result in
    a corrupted image).
 */
-int SIO_WriteStatusBlock(int unit, const UBYTE *buffer)
+int SIO_WriteStatusBlock_Ctx(Atari800_Instance *inst, int unit, const UBYTE *buffer)
 {
+	SIO_PIN_CTX(inst);
 	int size;
 #ifdef DEBUG
 	Log_print("Write Status-Block: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -996,8 +1059,9 @@ int SIO_WriteStatusBlock(int unit, const UBYTE *buffer)
 	return 'C';
 }
 
-int SIO_ReadStatusBlock(int unit, UBYTE *buffer)
+int SIO_ReadStatusBlock_Ctx(Atari800_Instance *inst, int unit, UBYTE *buffer)
 {
+	SIO_PIN_CTX(inst);
 	UBYTE tracks;
 	UBYTE heads;
 	int spt;
@@ -1061,8 +1125,9 @@ int SIO_ReadStatusBlock(int unit, UBYTE *buffer)
    Bit 5 = 1 indicates double density
    Bit 7 = 1 indicates dual density disk (1050 format)
  */
-int SIO_DriveStatus(int unit, UBYTE *buffer)
+int SIO_DriveStatus_Ctx(Atari800_Instance *inst, int unit, UBYTE *buffer)
 {
+	SIO_PIN_CTX(inst);
 	if (BINLOAD_start_binloading) {
 		buffer[0] = 16 + 8;
 		buffer[1] = 255;
@@ -1117,8 +1182,9 @@ int SIO_DriveStatus(int unit, UBYTE *buffer)
 #endif
 
 /* SIO patch emulation routine */
-void SIO_Handler(void)
+void SIO_Handler_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	int sector = MEMORY_dGetWordAligned(0x30a);
 	UBYTE unit = MEMORY_dGetByte(0x300) + MEMORY_dGetByte(0x301) + 0xff;
 	UBYTE result = 0x00;
@@ -1512,8 +1578,9 @@ static UBYTE Command_Frame(void)
 }
 
 /* Enable/disable the command frame */
-void SIO_SwitchCommandFrame(int onoff)
+void SIO_SwitchCommandFrame_Ctx(Atari800_Instance *inst, int onoff)
 {
+	SIO_PIN_CTX(inst);
 #ifdef NETSIO
 	if (netsio_enabled && netsio_netstream_active()) {
 		CommandIndex = 0;
@@ -1666,8 +1733,9 @@ void NetSIO_PutByte(int byte)
 #endif /* NETSIO */
 
 /* Put a byte that comes out of POKEY. So get it here... */
-void SIO_PutByte(int byte)
+void SIO_PutByte_Ctx(Atari800_Instance *inst, int byte)
 {
+	SIO_PIN_CTX(inst);
 #ifdef NETSIO
 	if (netsio_enabled && !BINLOAD_start_binloading)
 	{
@@ -1825,8 +1893,9 @@ int NetSIO_GetByte(void)
 #endif /* NETSIO */
 
 /* Get a byte from the floppy to the pokey. */
-int SIO_GetByte(void)
+int SIO_GetByte_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	int byte = 0;
 
 #ifdef NETSIO
@@ -1890,8 +1959,9 @@ int SIO_GetByte(void)
 }
 
 #if !defined(BASIC) && !defined(__PLUS)
-int SIO_RotateDisks(void)
+int SIO_RotateDisks_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	char tmp_filenames[SIO_MAX_DRIVES][FILENAME_MAX];
 	int i;
 	int bSuccess = TRUE;
@@ -1924,8 +1994,9 @@ int SIO_RotateDisks(void)
 
 #ifndef BASIC
 
-void SIO_StateSave(void)
+void SIO_StateSave_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	int i;
 
 	for (i = 0; i < 8; i++) {
@@ -1934,8 +2005,9 @@ void SIO_StateSave(void)
 	}
 }
 
-void SIO_StateRead(void)
+void SIO_StateRead_Ctx(Atari800_Instance *inst)
 {
+	SIO_PIN_CTX(inst);
 	int i;
 
 	for (i = 0; i < 8; i++) {

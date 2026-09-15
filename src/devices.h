@@ -5,13 +5,23 @@
 #include "atari.h" /* UWORD */
 #include "instance.h" /* Devices_state_t (transitional default-instance aliases) */
 
-int Devices_Initialise(int *argc, char *argv[]);
-void Devices_Exit(void);
-int Devices_PatchOS(void);
-void Devices_Frame(void);
-void Devices_UpdatePatches(void);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. */
+int Devices_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+void Devices_Exit_Ctx(Atari800_Instance *inst);
+int Devices_PatchOS_Ctx(Atari800_Instance *inst);
+void Devices_Frame_Ctx(Atari800_Instance *inst);
+void Devices_UpdatePatches_Ctx(Atari800_Instance *inst);
 
-UWORD Devices_SkipDeviceName(void);
+UWORD Devices_SkipDeviceName_Ctx(Atari800_Instance *inst);
+
+#define Devices_Initialise(argc, argv) Devices_Initialise_Ctx(Atari800_default, argc, argv)
+#define Devices_Exit()                 Devices_Exit_Ctx(Atari800_default)
+#define Devices_PatchOS()              Devices_PatchOS_Ctx(Atari800_default)
+#define Devices_Frame()                Devices_Frame_Ctx(Atari800_default)
+#define Devices_UpdatePatches()        Devices_UpdatePatches_Ctx(Atari800_default)
+#define Devices_SkipDeviceName()       Devices_SkipDeviceName_Ctx(Atari800_default)
 
 /* Transitional Option C bridge: the per-instance Devices state lives in
    Devices_state_t (instance.h). Until all callers pass an instance
@@ -30,12 +40,15 @@ UWORD Devices_SkipDeviceName(void);
 
 #define Devices_h_current_dir  (Atari800_default->devices.h_current_dir)
 
-int Devices_H_CountOpen(void);
-void Devices_H_CloseAll(void);
+int Devices_H_CountOpen_Ctx(Atari800_Instance *inst);
+void Devices_H_CloseAll_Ctx(Atari800_Instance *inst);
+#define Devices_H_CountOpen()          Devices_H_CountOpen_Ctx(Atari800_default)
+#define Devices_H_CloseAll()           Devices_H_CloseAll_Ctx(Atari800_default)
 
 #define Devices_print_command  (Atari800_default->devices.print_command)
 
-int Devices_SetPrintCommand(const char *command);
+int Devices_SetPrintCommand_Ctx(Atari800_Instance *inst, const char *command);
+#define Devices_SetPrintCommand(cmd)   Devices_SetPrintCommand_Ctx(Atari800_default, cmd)
 
 #define dev_b_status (Atari800_default->devices.dev_b_status)
 
@@ -79,7 +92,9 @@ int Devices_SetPrintCommand(const char *command);
 #define Devices_TABLE_SPEC	10
 #define Devices_TABLE_INIT	12
 
-UWORD Devices_UpdateHATABSEntry(char device, UWORD entry_address, UWORD table_address);
-void Devices_RemoveHATABSEntry(char device, UWORD entry_address, UWORD table_address);
+UWORD Devices_UpdateHATABSEntry_Ctx(Atari800_Instance *inst, char device, UWORD entry_address, UWORD table_address);
+void Devices_RemoveHATABSEntry_Ctx(Atari800_Instance *inst, char device, UWORD entry_address, UWORD table_address);
+#define Devices_UpdateHATABSEntry(dev, ea, ta) Devices_UpdateHATABSEntry_Ctx(Atari800_default, dev, ea, ta)
+#define Devices_RemoveHATABSEntry(dev, ea, ta) Devices_RemoveHATABSEntry_Ctx(Atari800_default, dev, ea, ta)
 
 #endif /* DEVICES_H_ */

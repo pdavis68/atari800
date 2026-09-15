@@ -127,9 +127,13 @@ refactor. It is the working companion to
 
 ## Phase 2 — Chip modules
 
-> **Status: in progress.** ANTIC state migration done (2026-09-15); ANTIC
-> function signature conversion done (2026-09-15). GTIA/POKEY/PIA signature
-> conversion not started.
+> **Status: in progress.** ANTIC, GTIA, POKEY, and PIA state migrations and
+> function signature conversions are done (2026-09-15). All four chip modules
+> now expose `*_Ctx(Atari800_Instance *inst, ...)` entry points; the legacy
+> names are forwarding macros passing `Atari800_default` in each header, and
+> `*_GetByte`/`*_PutByte` remain real functions (memory-map thunks) pinning
+> the default instance. Build passes; 20 s smoke run (no-disk XL boot) clean,
+> no CIM.
 
 ### 2.1 ANTIC — [`src/antic.h`](src/antic.h), [`src/antic.c`](src/antic.c)
 
@@ -177,16 +181,29 @@ refactor. It is the working companion to
       `pete.atr` boot) was observed once during smoke testing after this
       migration; not reproducible in 9 subsequent runs (8 s and 20 s). Re-test
       after the ANTIC function-signature conversion; if it reappears, suspect
-      the transitional default-instance aliasing.
+      the transitional default-instance aliasing. Note: the `pete.atr` disk
+      image was accidentally overwritten on 2026-09-15 by a mis-used
+      `-config` flag during smoke testing (it was untracked/gitignored, so
+      not recoverable from git); smoke runs now use a no-disk XL boot (and
+      `valForth1.1.atr` when disk I/O coverage is needed). No CIM observed in
+      the post-GTIA/POKEY/PIA-conversion 20 s run.
 
 ### 2.2 GTIA — [`src/gtia.h`](src/gtia.h), [`src/gtia.c`](src/gtia.c)
 
-- [ ] Convert: `GTIA_Initialise`, `GTIA_Frame`, `GTIA_NewPmScanline`,
+- [x] Convert: `GTIA_Initialise`, `GTIA_Frame`, `GTIA_NewPmScanline`,
       `GTIA_GetByte`, `GTIA_PutByte`, `GTIA_StateSave`, `GTIA_StateRead`,
       `GTIA_UpdatePmplColls`.
-      Note: `GTIA_GetByte`/`GTIA_PutByte` are registered in the memory map
-      tables (fixed context-free signature) — same thunk consideration as
-      ANTIC.
+      Done 2026-09-15: each public function is now
+      `GTIA_*_Ctx(Atari800_Instance *inst, ...)` in `gtia.c`, which pins the
+      file-scope context (`G = &inst->gtia`, `GI = inst`) via
+      `GTIA_PIN_CTX(inst)`; all state aliases inside `gtia.c` route through
+      `G`. In `gtia.h` the legacy names are forwarding macros that pass
+      `Atari800_default` (`GTIA_StateRead(version)` forwards the version
+      argument). `GTIA_GetByte`/`GTIA_PutByte` remain real functions
+      (registered in the per-instance memory map tables, fixed context-free
+      signature) that pin the default instance and forward to the `_Ctx`
+      versions — they will become per-instance thunks when the memory map
+      tables are converted. Build passes; 20 s smoke run clean.
 - [x] Move state: all colour/position/graphics registers (`GTIA_GRAFP0..3`,
       `GTIA_HPOSP0..3`, `GTIA_HPOSM0..3`, `GTIA_SIZEP0..3`, `GTIA_SIZEM`,
       `GTIA_COLPM0..3`, `GTIA_COLPF0..3`, `GTIA_COLBK`, `GTIA_GRACTL`,
@@ -207,12 +224,19 @@ refactor. It is the working companion to
 
 ### 2.3 POKEY — [`src/pokey.h`](src/pokey.h), [`src/pokey.c`](src/pokey.c)
 
-- [ ] Convert: `POKEY_Initialise`, `POKEY_Frame`, `POKEY_Scanline`,
+- [x] Convert: `POKEY_Initialise`, `POKEY_Frame`, `POKEY_Scanline`,
       `POKEY_GetByte`, `POKEY_PutByte`, `POKEY_StateSave`, `POKEY_StateRead`,
       `POKEY_GetRandomCounter`, `POKEY_SetRandomCounter`.
-      Note: `POKEY_GetByte`/`POKEY_PutByte` are registered in the memory map
-      tables (fixed context-free signature) — same thunk consideration as
-      ANTIC/GTIA.
+      Done 2026-09-15: each public function is now
+      `POKEY_*_Ctx(Atari800_Instance *inst, ...)` in `pokey.c`, which pins
+      the file-scope context (`PK = &inst->pokey`, `PKI = inst`) via
+      `POKEY_PIN_CTX(inst)`; all state aliases inside `pokey.c` route through
+      `PK`. In `pokey.h` the legacy names are forwarding macros that pass
+      `Atari800_default`. `POKEY_GetByte`/`POKEY_PutByte` remain real
+      functions (registered in the per-instance memory map tables, fixed
+      context-free signature) that pin the default instance and forward to
+      the `_Ctx` versions — same thunk consideration as ANTIC/GTIA. Build
+      passes; 20 s smoke run clean.
 - [x] Move state: `POKEY_KBCODE`, `POKEY_IRQST`, `POKEY_IRQEN`, `POKEY_SKSTAT`,
       `POKEY_SKCTL`, `POKEY_DELAYED_SERIN_IRQ`, `POKEY_DELAYED_SEROUT_IRQ`,
       `POKEY_DELAYED_XMTDONE_IRQ`, `POKEY_irq_at_xpos`, `POKEY_irq_pending_mask`,
@@ -229,9 +253,20 @@ refactor. It is the working companion to
 
 ### 2.4 PIA — [`src/pia.h`](src/pia.h), [`src/pia.c`](src/pia.c)
 
-- [ ] Convert: `PIA_Initialise`, `PIA_Reset`, `PIA_GetByte`, `PIA_PutByte`,
+- [x] Convert: `PIA_Initialise`, `PIA_Reset`, `PIA_GetByte`, `PIA_PutByte`,
       `PIA_StateSave`, `PIA_StateRead`, `PIA_SetCA1`, `PIA_SetCB1`,
       `update_PIA_IRQ`.
+      Done 2026-09-15: each public function is now
+      `PIA_*_Ctx(Atari800_Instance *inst, ...)` (and
+      `update_PIA_IRQ_Ctx`) in `pia.c`, which pins the file-scope context
+      (`PI = &inst->pia`, `PINST = inst`) via `PIA_PIN_CTX(inst)`; all state
+      aliases inside `pia.c` route through `PI`. In `pia.h` the legacy names
+      are forwarding macros that pass `Atari800_default`
+      (`PIA_StateRead(version)` forwards the version argument).
+      `PIA_GetByte`/`PIA_PutByte` remain real functions (registered in the
+      per-instance memory map tables, fixed context-free signature) that pin
+      the default instance and forward to the `_Ctx` versions — same thunk
+      consideration as ANTIC/GTIA/POKEY. Build passes; 20 s smoke run clean.
 - [x] Move state: `PIA_PACTL`, `PIA_PBCTL`, `PIA_PORTA`, `PIA_PORTB`,
       `PIA_PORTA_mask`, `PIA_PORTB_mask`, `PIA_PORT_input[2]`, `PIA_CA1`,
       `PIA_CB1`, `PIA_CA2`, `PIA_CB2`, `PIA_IRQ`.
@@ -246,13 +281,34 @@ refactor. It is the working companion to
 
 ## Phase 3 — Peripheral modules
 
+> **Status: in progress.** SIO, Devices, Cartridge, Cassette, PBI, the
+> ESC/Binload handlers, and RTIME done (2026-09-15). All of them now expose
+> `*_Ctx(Atari800_Instance *inst, ...)` entry points with legacy-name
+> forwarding macros in their headers. Verified with the Acid800 suite
+> (`-atari test/acid800.atr -acid800 test/acid800.expected`): results
+> identical to the pre-refactor baseline (23 success / 28 expected failures /
+> 2 skipped; the 2 FAILs — "MMU: XL banking" and "suite totals changed" — and
+> the NEW "GTIA: Defrrupt control test" reproduce identically on unmodified
+> HEAD, so they are pre-existing, not refactor regressions). See
+> [`docs/acid800-expected-results.md`](acid800-expected-results.md) for the
+> full expected-results reference and how to run the suite.
+
 ### 3.1 SIO / Disk drives — [`src/sio.h`](src/sio.h), [`src/sio.c`](src/sio.c)
 
-- [ ] Convert: `SIO_Handler`, `SIO_Mount`, `SIO_Dismount`, `SIO_DisableDrive`,
+- [x] Convert: `SIO_Handler`, `SIO_Mount`, `SIO_Dismount`, `SIO_DisableDrive`,
       `SIO_RotateDisks`, `SIO_ChkSum`, `SIO_SwitchCommandFrame`, `SIO_PutByte`,
       `SIO_GetByte`, `SIO_Initialise`, `SIO_Exit`, `SIO_ReadStatusBlock`,
       `SIO_FormatDisk`, `SIO_SizeOfSector`, `SIO_ReadSector`, `SIO_DriveStatus`,
       `SIO_WriteStatusBlock`, `SIO_WriteSector`, `SIO_StateSave`, `SIO_StateRead`.
+      Done 2026-09-15: each is now `SIO_*_Ctx(Atari800_Instance *inst, ...)`
+      in `sio.c`, pinning the file-scope context (`SIOp = &inst->sio`,
+      `SIOi = inst`) via `SIO_PIN_CTX(inst)`; all state aliases inside `sio.c`
+      route through `SIOp`. In `sio.h` the legacy names are forwarding macros
+      passing `Atari800_default`. Exceptions: `SIO_ChkSum` is stateless
+      (signature unchanged); `SIO_Handler` remains a real function (it is
+      registered as a function pointer by `ESC_AddEscRts` in `esc.c`) that
+      pins the default instance and forwards to `SIO_Handler_Ctx`. Build
+      passes; Acid800 results identical to pre-refactor baseline.
 - [x] Move state: `SIO_status[256]`, `SIO_drive_status[8]`,
       `SIO_filename[8][FILENAME_MAX]`, `SIO_last_op`, `SIO_last_op_time`,
       `SIO_last_drive`, `SIO_last_sector`, `SIO_format_sectorcount[8]`,
@@ -274,10 +330,16 @@ refactor. It is the working companion to
 
 ### 3.2 Devices (H:/P:/R:/B: patches) — [`src/devices.h`](src/devices.h), [`src/devices.c`](src/devices.c)
 
-- [ ] Convert: `Devices_Initialise`, `Devices_Exit`, `Devices_PatchOS`,
+- [x] Convert: `Devices_Initialise`, `Devices_Exit`, `Devices_PatchOS`,
       `Devices_Frame`, `Devices_UpdatePatches`, `Devices_SkipDeviceName`,
       `Devices_H_CountOpen`, `Devices_H_CloseAll`, `Devices_SetPrintCommand`,
       `Devices_UpdateHATABSEntry`, `Devices_RemoveHATABSEntry`.
+      Done 2026-09-15: each is now `Devices_*_Ctx(Atari800_Instance *inst, ...)`
+      in `devices.c`, pinning the file-scope context (`DEV = &inst->devices`,
+      `DEVi = inst`) via `DEVICES_PIN_CTX(inst)`; all state aliases inside
+      `devices.c` route through `DEV`. In `devices.h` the legacy names are
+      forwarding macros passing `Atari800_default`. Build passes; Acid800
+      results identical to pre-refactor baseline.
 - [x] Move state: `Devices_enable_h_patch`, `Devices_enable_p_patch`,
       `Devices_enable_r_patch`, `Devices_enable_b_patch`,
       `Devices_atari_h_dir[4][FILENAME_MAX]`, `Devices_h_read_only`,
@@ -300,15 +362,25 @@ refactor. It is the working companion to
 
 ### 3.3 Cartridge — [`src/cartridge.h`](src/cartridge.h), [`src/cartridge.c`](src/cartridge.c)
 
-- [ ] Convert: `CARTRIDGE_Initialise`, `CARTRIDGE_Exit`, `CARTRIDGE_Insert`,
+- [x] Convert: `CARTRIDGE_Initialise`, `CARTRIDGE_Exit`, `CARTRIDGE_Insert`,
       `CARTRIDGE_InsertAutoReboot`, `CARTRIDGE_Insert_Second`, `CARTRIDGE_SetType`,
       `CARTRIDGE_SetTypeAutoReboot`, `CARTRIDGE_Remove`, `CARTRIDGE_RemoveAutoReboot`,
       `CARTRIDGE_Remove_Second`, `CARTRIDGE_ColdStart`, `CARTRIDGE_GetByte`,
       `CARTRIDGE_PutByte`, `CARTRIDGE_StateSave`, `CARTRIDGE_StateRead`,
       `CARTRIDGE_BountyBob1GetByte`.
-      Note: `CARTRIDGE_GetByte`/`CARTRIDGE_PutByte` (and the BountyBob/5200
-      SuperCart handlers) are registered in the memory map tables — same thunk
-      consideration as ANTIC/GTIA/POKEY.
+      Done 2026-09-15: each is now
+      `CARTRIDGE_*_Ctx(Atari800_Instance *inst, ...)` in `cartridge.c`
+      (including `CARTRIDGE_ReadConfig`/`WriteConfig`/`UpdateState`); the
+      existing `CARTRIDGE_PIN_CTX()` was extended to take the instance
+      (`CARTp = &inst->cartridge`, `CARTi = inst`) and still lazily pins
+      `active_cart` to `&main` (the instance is zero-initialised). All state
+      aliases inside `cartridge.c` route through `CARTp`. In `cartridge.h`
+      the legacy names are forwarding macros passing `Atari800_default`.
+      `CARTRIDGE_GetByte`/`CARTRIDGE_PutByte` and the BountyBob1/2 and 5200
+      SuperCart handlers remain real functions (registered in the per-instance
+      memory map tables, fixed context-free signature) that pin the default
+      instance and forward to the `_Ctx` versions. Build passes; Acid800
+      results identical to pre-refactor baseline.
 - [x] Move state: `CARTRIDGE_main`, `CARTRIDGE_piggyback` (including the
       `image` buffers), `CARTRIDGE_autoreboot`.
       Done 2026-09-15: `CARTRIDGE_image_t` typedef moved from `cartridge.h`
@@ -326,13 +398,21 @@ refactor. It is the working companion to
 
 ### 3.4 Cassette — [`src/cassette.h`](src/cassette.h), [`src/cassette.c`](src/cassette.c)
 
-- [ ] Convert: `CASSETTE_Initialise`, `CASSETTE_Exit`, `CASSETTE_Insert`,
+- [x] Convert: `CASSETTE_Initialise`, `CASSETTE_Exit`, `CASSETTE_Insert`,
       `CASSETTE_Remove`, `CASSETTE_CreateCAS`, `CASSETTE_ToggleWriteProtect`,
       `CASSETTE_ToggleRecord`, `CASSETTE_Seek`, `CASSETTE_IOLineStatus`,
       `CASSETTE_GetByte`, `CASSETTE_PutByte`, `CASSETTE_TapeMotor`,
       `CASSETTE_AddScanLine`, `CASSETTE_ResetPOKEY`, `CASSETTE_GetSize`,
       `CASSETTE_GetPosition`, `CASSETTE_AddGap`, `CASSETTE_ReadToMemory`,
       `CASSETTE_WriteFromMemory`, `CASSETTE_LeaderLoad`, `CASSETTE_LeaderSave`.
+      Done 2026-09-15: each is now
+      `CASSETTE_*_Ctx(Atari800_Instance *inst, ...)` in `cassette.c` (also
+      `CASSETTE_ReadConfig`/`WriteConfig`), pinning the file-scope context
+      (`CAS = &inst->cassette`, `CASi = inst`) via `CASSETTE_PIN_CTX(inst)`;
+      all state aliases inside `cassette.c` route through `CAS`. In
+      `cassette.h` the legacy names are forwarding macros passing
+      `Atari800_default`. Build passes; Acid800 results identical to
+      pre-refactor baseline.
 - [x] Move state: `CASSETTE_filename`, `CASSETTE_description`, `CASSETTE_status`,
       `CASSETTE_hold_start`, `CASSETTE_hold_start_on_reboot`,
       `CASSETTE_press_space`, `CASSETTE_write_protect`, `CASSETTE_record`,
@@ -351,10 +431,43 @@ refactor. It is the working companion to
 
 ### 3.5 PBI — [`src/pbi.h`](src/pbi.h), [`src/pbi.c`](src/pbi.c)
 
-- [ ] Convert: `PBI_Initialise`, `PBI_Exit`, `PBI_Reset`, `PBI_D1GetByte`,
+- [x] Convert: `PBI_Initialise`, `PBI_Exit`, `PBI_Reset`, `PBI_D1GetByte`,
       `PBI_D1PutByte`, `PBI_D6GetByte`, `PBI_D6PutByte`, `PBI_D7GetByte`,
-      `PBI_D7PutByte`, `PBI_StateSave`, `PBI_StateRead`.
-- [ ] Move state: `PBI_IRQ`, `PBI_D6D7ram`.
+      `PBI_D7PutByte`, `PBI_StateSave`, `PBI_StateRead`
+      (also `PBI_ReadConfig`/`PBI_WriteConfig`).
+      Done 2026-09-15: each is now `PBI_*_Ctx(Atari800_Instance *inst, ...)`
+      in `pbi.c`, pinning the file-scope context (`PB = &inst->pbi`,
+      `PBIi = inst`) via `PBI_PIN_CTX(inst)`; all state aliases inside
+      `pbi.c` route through `PB` (the header's `PBI_IRQ`/`PBI_D6D7ram`
+      aliases are `#undef`'d and re-pointed to `PB` inside `pbi.c`).
+      In `pbi.h` the legacy names are forwarding macros passing
+      `Atari800_default`. Unlike the chip modules, the D1/D6/D7
+      Get/PutByte functions are dispatched from the
+      `MEMORY_HwGetByte`/`MEMORY_HwPutByte` switch statements (not
+      function-pointer tables), so no context-free real-function thunks
+      were needed — memory.c's calls go through the forwarding macros and
+      will be re-routed per-instance when the hardware dispatch layer is
+      converted. `PBI_Reset_Ctx` calls `PBI_D1PutByte_Ctx(inst, ...)`
+      directly (not the forwarding macro). Note: `fp_active` — the
+      floating-point-ROM reactivation flag that was a function-local
+      `static` in `PBI_D1PutByte` — moved into `PBI_state_t` (initialised
+      `TRUE` in the default-instance initializer in `atari.c`) so the
+      TRUE-on-first-call semantics are preserved per instance. Calls into
+      the not-yet-converted PBI sub-modules (MIO, BB, XLD, PROTO80, AF80,
+      BIT3) still touch those modules' own file-scope globals.
+      Build passes; Acid800 results identical to pre-refactor baseline;
+      20 s no-disk smoke run clean (no CIM).
+- [x] Move state: `PBI_IRQ`, `PBI_D6D7ram` (plus the previously file-scope
+      `D1FF_LATCH` and `fp_active` internals).
+      Done 2026-09-15: `PBI_state_t` defined concretely in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.pbi`, replacing the earlier forward-declared
+      pointer member); `pbi.h` aliases `PBI_IRQ`/`PBI_D6D7ram` to
+      `Atari800_default->pbi.*`. Default-instance init preserved in
+      `atari.c` (`fp_active = TRUE`). Sub-modules that write
+      `PBI_D6D7ram`/`PBI_IRQ` directly (pbi_xld.c, pbi_bb.c,
+      pbi_proto80.c) continue to work unchanged via the header aliases
+      (transitional: they hit the default instance).
 
 ### 3.6 PBI sub-modules
 
@@ -378,8 +491,24 @@ refactor. It is the working companion to
 
 ### 3.7 Other peripherals
 
-- [ ] **RTIME** — [`src/rtime.h`](src/rtime.h): `RTIME_Initialise`, `RTIME_GetByte`,
-      `RTIME_PutByte`; state `RTIME_enabled`.
+- [x] **RTIME** — [`src/rtime.h`](src/rtime.h), [`src/rtime.c`](src/rtime.c):
+      `RTIME_Initialise`, `RTIME_GetByte`, `RTIME_PutByte`
+      (also `RTIME_ReadConfig`/`RTIME_WriteConfig`); state `RTIME_enabled`.
+      Done 2026-09-15: each is now `RTIME_*_Ctx(Atari800_Instance *inst, ...)`
+      in `rtime.c`, pinning the file-scope context (`RT = &inst->rtime`,
+      `RTI = inst`) via `RTIME_PIN_CTX(inst)`; the state aliases inside
+      `rtime.c` route through `RT`. In `rtime.h` the legacy names are
+      forwarding macros passing `Atari800_default`. `cartridge.c`'s
+      `CARTRIDGE_*_Ctx` D5-page dispatch passes its own instance (`CARTi`)
+      to `RTIME_GetByte_Ctx`/`RTIME_PutByte_Ctx`; `cfg.c`, `atari.c` and
+      `ui.c` go through the forwarding macros (transitional). State
+      `RTIME_enabled` plus the internals (`rtime_state`, `rtime_tmp`,
+      `rtime_tmp2`, `regset[16]`) moved into `RTIME_state_t`
+      ([`src/instance.h`](src/instance.h)), **embedded by value** in
+      `Atari800_Instance` (`.rtime`); `RTIME_enabled = 1` is preserved in
+      the default-instance initializer in `atari.c`. Build passes;
+      Acid800 results identical to pre-refactor baseline; 20 s smoke run
+      clean.
 - [ ] **XEP80** — [`src/xep80.h`](src/xep80.h): `XEP80_SetEnabled`, `XEP80_GetBit`,
       `XEP80_PutBit`, `XEP80_ChangeColors`, `XEP80_StateSave`, `XEP80_StateRead`,
       `XEP80_Initialise`; state `XEP80_enabled`, `XEP80_port`, `XEP80_scrn_height`,
@@ -406,12 +535,54 @@ refactor. It is the working companion to
 
 ### 3.8 ESC / Binload handlers
 
-- [ ] **ESC** — [`src/esc.h`](src/esc.h): the escape-code handlers; state
-      `ESC_enable_sio_patch`.
-- [ ] **Binload** — [`src/binload.h`](src/binload.h): `BINLOAD_Loader`,
-      `BINLOAD_LoaderStart`; state `BINLOAD_bin_file`, `BINLOAD_start_binloading`,
-      `BINLOAD_loading_basic`, `BINLOAD_slow_xex_loading`, `BINLOAD_wait_active`,
-      `BINLOAD_pause_loading`.
+- [x] **ESC** — [`src/esc.h`](src/esc.h), [`src/esc.c`](src/esc.c):
+      `ESC_Add`, `ESC_AddEscRts`, `ESC_AddEscRts2`, `ESC_Remove`, `ESC_Run`,
+      `ESC_PatchOS`, `ESC_ClearAll`, `ESC_UpdatePatches`; state
+      `ESC_enable_sio_patch` and the escape tables.
+      Done 2026-09-15: each is now `ESC_*_Ctx(Atari800_Instance *inst, ...)`
+      in `esc.c`, pinning the file-scope context (`E = &inst->esc`,
+      `ESCi = inst`) via `ESC_PIN_CTX(inst)`; the state aliases inside
+      `esc.c` route through `E`. In `esc.h` the legacy names are forwarding
+      macros passing `Atari800_default`. `cpu.c` passes its own instance to
+      `ESC_Run_Ctx` (the escape machinery runs inside the CPU decoder's
+      context); all other callers (memory.c, devices.c, cassette.c, sio.c,
+      atari.c, ui.c, binload.c) go through the forwarding macros
+      (transitional: they hit the default instance) and will be re-routed as
+      their enclosing modules become instance-aware. The `esc_address[256]`/
+      `esc_function[256]` tables moved into `ESC_state_t`
+      ([`src/instance.h`](src/instance.h)) along with the
+      `ESC_FunctionType` typedef (moved there from `esc.h` so instance.h
+      can embed the tables); `ESC_enable_sio_patch = TRUE` is preserved in
+      the default-instance initializer in `atari.c`. **Deferred:** the
+      registered handler functions (`SIO_Handler`, `CassetteLeaderLoad`,
+      `loader_cont`, the Devices/P: handlers, ...) remain context-free
+      thunks pinning the default instance — converting them requires the
+      ESC dispatch to carry a context (or per-instance registrations) and
+      touches every handler module at once; revisit in the cross-cutting
+      audit. Build passes; Acid800 results identical to pre-refactor
+      baseline; 20 s smoke run clean.
+- [x] **Binload** — [`src/binload.h`](src/binload.h), [`src/binload.c`](src/binload.c):
+      `BINLOAD_Loader`, `BINLOAD_LoaderStart`.
+      Done 2026-09-15: both are now
+      `BINLOAD_*_Ctx(Atari800_Instance *inst, ...)` in `binload.c`, pinning
+      the file-scope context (`BL = &inst->binload`, `BLi = inst`) via
+      `BL_PIN_CTX(inst)`; the state aliases inside `binload.c` route through
+      `BL`. In `binload.h` the legacy names are forwarding macros passing
+      `Atari800_default`. `sio.c`'s `SIO_ReadSector_Ctx` boot-sector path
+      passes its own instance to `BINLOAD_LoaderStart_Ctx`. State
+      `BINLOAD_bin_file`, `BINLOAD_start_binloading`, `BINLOAD_loading_basic`,
+      `BINLOAD_slow_xex_loading`, `BINLOAD_wait_active`,
+      `BINLOAD_pause_loading` plus the internal slow-XEX state
+      (`instr_elapsed`, `from`, `to`, `init2e3`, `segfinished`) moved into
+      `Binload_state_t` ([`src/instance.h`](src/instance.h)) and is
+      **embedded by value** in `Atari800_Instance` (`.binload`); defaults
+      (all zero/FALSE, `segfinished = TRUE` in the `atari.c` initializer)
+      match the old static initialisers. The internal `loader_cont` escape
+      handler is registered via `ESC_Add` as a context-free callback
+      (`static void loader_cont(void)` thunk pinning the default instance
+      over `loader_cont_Ctx`) — same deferred ESC-handler consideration as
+      above. Build passes; Acid800 results identical to pre-refactor
+      baseline; 20 s smoke run clean.
 
 ### 3.9 Input — [`src/input.h`](src/input.h), [`src/input.c`](src/input.c)
 

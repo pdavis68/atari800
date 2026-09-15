@@ -53,10 +53,21 @@
 #define CARTRIDGE_main     (Atari800_default->cartridge.main)
 #define CARTRIDGE_piggyback (Atari800_default->cartridge.piggyback)
 
-int CARTRIDGE_ReadConfig(char *string, char *ptr);
-void CARTRIDGE_WriteConfig(FILE *fp);
-int CARTRIDGE_Initialise(int *argc, char *argv[]);
-void CARTRIDGE_Exit(void);
+/* Context-aware entry points (Option C). The legacy names below are
+   forwarding macros that pass the default instance, so not-yet-migrated
+   callers are unchanged. CARTRIDGE_GetByte/PutByte and the BountyBob/5200
+   SuperCart handlers remain real functions (registered in the per-instance
+   memory map tables, fixed context-free signature) and pin the default
+   instance. */
+int CARTRIDGE_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr);
+void CARTRIDGE_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp);
+int CARTRIDGE_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]);
+void CARTRIDGE_Exit_Ctx(Atari800_Instance *inst);
+
+#define CARTRIDGE_ReadConfig(str, ptr) CARTRIDGE_ReadConfig_Ctx(Atari800_default, str, ptr)
+#define CARTRIDGE_WriteConfig(fp)      CARTRIDGE_WriteConfig_Ctx(Atari800_default, fp)
+#define CARTRIDGE_Initialise(argc, argv) CARTRIDGE_Initialise_Ctx(Atari800_default, argc, argv)
+#define CARTRIDGE_Exit()               CARTRIDGE_Exit_Ctx(Atari800_default)
 
 #define CARTRIDGE_CANT_OPEN		-1	/* Can't open cartridge image file */
 #define CARTRIDGE_BAD_FORMAT		-2	/* Unknown cartridge format */
@@ -81,36 +92,67 @@ void CARTRIDGE_Exit(void);
      CARTRIDGE_main.type is then set to CARTRIDGE_UNKNOWN. The caller is
      expected to select a cartridge type according to the returned size, and
      call either CARTRIDGE_SetType() or CARTRIDGE_SetTypeAutoReboot(). */
-int CARTRIDGE_Insert(const char *filename);
+int CARTRIDGE_Insert_Ctx(Atari800_Instance *inst, const char *filename);
+#define CARTRIDGE_Insert(filename)     CARTRIDGE_Insert_Ctx(Atari800_default, filename)
 /* Inserts the left cartridge - identically to CARTRIDGE_Insert(), then
    reboots the system if needed. */
-int CARTRIDGE_InsertAutoReboot(const char *filename);
+int CARTRIDGE_InsertAutoReboot_Ctx(Atari800_Instance *inst, const char *filename);
+#define CARTRIDGE_InsertAutoReboot(filename) CARTRIDGE_InsertAutoReboot_Ctx(Atari800_default, filename)
 /* Inserts the piggyback cartridge. Works identically to CARTRIDGE_Insert(),
    but modifies CARTRIDGE_piggyback instead of CARTRIDGE_main. */
-int CARTRIDGE_Insert_Second(const char *filename);
+int CARTRIDGE_Insert_Second_Ctx(Atari800_Instance *inst, const char *filename);
+#define CARTRIDGE_Insert_Second(filename) CARTRIDGE_Insert_Second_Ctx(Atari800_default, filename)
 /* When the cartridge type is CARTRIDGE_UNKNOWN after a call to
    CARTRIDGE_Insert(), this function should be called to set the
    cartridge's type manually to a value chosen by user. */
-void CARTRIDGE_SetType(CARTRIDGE_image_t *cart, int type);
+void CARTRIDGE_SetType_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int type);
 /* Sets type of the cartridge and reboots the system if needed. */
-void CARTRIDGE_SetTypeAutoReboot(CARTRIDGE_image_t *cart, int type);
+void CARTRIDGE_SetTypeAutoReboot_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int type);
+#define CARTRIDGE_SetType(cart, type)  CARTRIDGE_SetType_Ctx(Atari800_default, cart, type)
+#define CARTRIDGE_SetTypeAutoReboot(cart, type) CARTRIDGE_SetTypeAutoReboot_Ctx(Atari800_default, cart, type)
 
 /* Removes the left cartridge. */
-void CARTRIDGE_Remove(void);
+void CARTRIDGE_Remove_Ctx(Atari800_Instance *inst);
 /* Removes the left cartridge and reboots the system if needed. */
-void CARTRIDGE_RemoveAutoReboot(void);
+void CARTRIDGE_RemoveAutoReboot_Ctx(Atari800_Instance *inst);
 /* Removed the piggyback cartridge. */
-void CARTRIDGE_Remove_Second(void);
+void CARTRIDGE_Remove_Second_Ctx(Atari800_Instance *inst);
 
 /* Called on system coldstart. Resets the states of mounted cartridges. */
-void CARTRIDGE_ColdStart(void);
+void CARTRIDGE_ColdStart_Ctx(Atari800_Instance *inst);
 
+#define CARTRIDGE_Remove()             CARTRIDGE_Remove_Ctx(Atari800_default)
+#define CARTRIDGE_RemoveAutoReboot()   CARTRIDGE_RemoveAutoReboot_Ctx(Atari800_default)
+#define CARTRIDGE_Remove_Second()      CARTRIDGE_Remove_Second_Ctx(Atari800_default)
+#define CARTRIDGE_ColdStart()          CARTRIDGE_ColdStart_Ctx(Atari800_default)
+
+UBYTE CARTRIDGE_GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+void CARTRIDGE_PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte);
 UBYTE CARTRIDGE_GetByte(UWORD addr, int no_side_effects);
 void CARTRIDGE_PutByte(UWORD addr, UBYTE byte);
-void CARTRIDGE_StateSave(void);
-void CARTRIDGE_StateRead(UBYTE version);
+void CARTRIDGE_StateSave_Ctx(Atari800_Instance *inst);
+void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version);
+#define CARTRIDGE_StateSave()          CARTRIDGE_StateSave_Ctx(Atari800_default)
+#define CARTRIDGE_StateRead(version)   CARTRIDGE_StateRead_Ctx(Atari800_default, version)
 
 /* addr must be $4fxx in 5200 mode or $8fxx in 800 mode. */
+UBYTE CARTRIDGE_BountyBob1GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+
+/* addr must be $5fxx in 5200 mode or $9fxx in 800 mode. */
+UBYTE CARTRIDGE_BountyBob2GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+
+/* addr must be $bfxx in 5200 mode only. */
+UBYTE CARTRIDGE_5200SuperCartGetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects);
+
+/* addr must be $4fxx in 5200 mode or $8fxx in 800 mode. */
+void CARTRIDGE_BountyBob1PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value);
+
+/* addr must be $5fxx in 5200 mode or $9fxx in 800 mode. */
+void CARTRIDGE_BountyBob2PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value);
+
+/* addr must be $bfxx in 5200 mode only. */
+void CARTRIDGE_5200SuperCartPutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE value);
+
 UBYTE CARTRIDGE_BountyBob1GetByte(UWORD addr, int no_side_effects);
 
 /* addr must be $5fxx in 5200 mode or $9fxx in 800 mode. */
@@ -131,5 +173,6 @@ void CARTRIDGE_5200SuperCartPutByte(UWORD addr, UBYTE value);
 int CARTRIDGE_ReadImage(const char *filename, CARTRIDGE_image_t *cart);
 int CARTRIDGE_WriteImage(char *filename, int type, UBYTE *image, int size, int raw, UBYTE value);
 
-void CARTRIDGE_UpdateState(CARTRIDGE_image_t *cart, int old_state);
+void CARTRIDGE_UpdateState_Ctx(Atari800_Instance *inst, CARTRIDGE_image_t *cart, int old_state);
+#define CARTRIDGE_UpdateState(cart, old_state) CARTRIDGE_UpdateState_Ctx(Atari800_default, cart, old_state)
 #endif /* CARTRIDGE_H_ */

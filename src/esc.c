@@ -1,8 +1,8 @@
 /*
- * esc.c - Patch the OS with escape sequences
+ * esc.c - emulator-specific escape codes
  *
- * Copyright (c) 1995-1998 David Firth
- * Copyright (c) 1998-2008 Atari800 development team (see DOC/CREDITS)
+ * Copyright (C) 2007-2008 Perry McFarlane
+ * Copyright (C) 2008-2019 Atari800 development team (see DOC/CREDITS)
  *
  * This file is part of the Atari800 emulator project which emulates
  * the Atari 400, 800, 800XL, 130XE, and 5200 8-bit computers.
@@ -23,11 +23,15 @@
 */
 
 #include "config.h"
+#include <stdio.h>
+#include <string.h>
+
 #include "atari.h"
+#include "esc.h"
+#include "binload.h"
 #include "cassette.h"
 #include "cpu.h"
 #include "devices.h"
-#include "esc.h"
 #include "log.h"
 #include "memory.h"
 #include "pia.h"
@@ -40,7 +44,26 @@
 #include "libatari800/cpu_crash.h"
 #endif
 
-int ESC_enable_sio_patch = TRUE;
+/* Transitional Option C bridge: the per-instance ESC state (escape
+   address/function tables and the SIO-patch flag) lives in ESC_state_t
+   (instance.h). The *_Ctx entry points pin the file-scope context
+   (E = &inst->esc, ESCi = inst); inside this file the legacy state names
+   route through E, so the _Ctx bodies operate on their own instance.
+   The registered handler functions remain context-free thunks (they pin
+   the default instance) until every handler module is converted. */
+static Atari800_Instance *ESCi;
+static ESC_state_t *E;
+
+#define ESC_PIN_CTX(inst) do { \
+	ESCi = (inst); \
+	E = &ESCi->esc; \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef ESC_enable_sio_patch
+#define ESC_enable_sio_patch (E->enable_sio_patch)
+#define esc_address  (E->esc_address)
+#define esc_function (E->esc_function)
 
 /* Now we check address of every escape code, to make sure that the patch
    has been set by the emulator and is not a CIM in Atari program.
@@ -50,8 +73,6 @@ int ESC_enable_sio_patch = TRUE;
    atari.c/devices.c. Unfortunately it can't be done for patches in Atari OS,
    because the OS in XL/XE can be disabled.
 */
-static UWORD esc_address[256];
-static ESC_FunctionType esc_function[256];
 
 /* Esc function that removes the wait loop when reading the tape leader. For
    use with standard Atari OSes only. */
@@ -91,23 +112,26 @@ static void CassetteLeaderAltirra(void)
 }
 #endif /* EMUOS_ALTIRRA */
 
-void ESC_ClearAll(void)
+void ESC_ClearAll_Ctx(Atari800_Instance *inst)
 {
 	int i;
+	ESC_PIN_CTX(inst);
 	for (i = 0; i < 256; i++)
 		esc_function[i] = NULL;
 }
 
-void ESC_Add(UWORD address, UBYTE esc_code, ESC_FunctionType function)
+void ESC_Add_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function)
 {
+	ESC_PIN_CTX(inst);
 	esc_address[esc_code] = address;
 	esc_function[esc_code] = function;
 	MEMORY_dPutByte(address, 0xf2);			/* ESC */
 	MEMORY_dPutByte(address + 1, esc_code);	/* ESC CODE */
 }
 
-void ESC_AddEscRts(UWORD address, UBYTE esc_code, ESC_FunctionType function)
+void ESC_AddEscRts_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function)
 {
+	ESC_PIN_CTX(inst);
 	esc_address[esc_code] = address;
 	esc_function[esc_code] = function;
 	MEMORY_dPutByte(address, 0xf2);			/* ESC */
@@ -121,21 +145,24 @@ void ESC_AddEscRts(UWORD address, UBYTE esc_code, ESC_FunctionType function)
    I don't know why it is done that way, so I simply leave it
    unchanged (0xf2/0xd2 are used as in previous versions).
 */
-void ESC_AddEscRts2(UWORD address, UBYTE esc_code, ESC_FunctionType function)
+void ESC_AddEscRts2_Ctx(Atari800_Instance *inst, UWORD address, UBYTE esc_code, ESC_FunctionType function)
 {
+	ESC_PIN_CTX(inst);
 	esc_address[esc_code] = address;
 	esc_function[esc_code] = function;
 	MEMORY_dPutByte(address, 0xd2);			/* ESCRTS */
 	MEMORY_dPutByte(address + 1, esc_code);	/* ESC CODE */
 }
 
-void ESC_Remove(UBYTE esc_code)
+void ESC_Remove_Ctx(Atari800_Instance *inst, UBYTE esc_code)
 {
+	ESC_PIN_CTX(inst);
 	esc_function[esc_code] = NULL;
 }
 
-void ESC_Run(UBYTE esc_code)
+void ESC_Run_Ctx(Atari800_Instance *inst, UBYTE esc_code)
 {
+	ESC_PIN_CTX(inst);
 	if (esc_address[esc_code] == CPU_regPC - 2 && esc_function[esc_code] != NULL) {
 		esc_function[esc_code]();
 		return;
@@ -161,9 +188,10 @@ void ESC_Run(UBYTE esc_code)
 #endif /* CRASH_MENU */
 }
 
-void ESC_PatchOS(void)
+void ESC_PatchOS_Ctx(Atari800_Instance *inst)
 {
 	int patched = Devices_PatchOS();
+	ESC_PIN_CTX(inst);
 	if (ESC_enable_sio_patch) {
 		UWORD addr_l;
 		UWORD addr_s;
@@ -172,7 +200,6 @@ void ESC_PatchOS(void)
 #if EMUOS_ALTIRRA
 		int altirra = FALSE;
 #endif /* EMUOS_ALTIRRA */
-
 		/* patch Open() of C: so we know when a leader is processed */
 		switch (Atari800_os_version) {
 		case SYSROM_A_NTSC:
@@ -231,7 +258,7 @@ void ESC_PatchOS(void)
 		}
 #if EMUOS_ALTIRRA
 		if (altirra)
-			ESC_AddEscRts(addr_l, ESC_COPENLOAD, CassetteLeaderAltirra);
+			ESC_AddEscRts_Ctx(ESCi, addr_l, ESC_COPENLOAD, CassetteLeaderAltirra);
 		else
 #endif /* EMUOS_ALTIRRA */
 		{
@@ -243,17 +270,17 @@ void ESC_PatchOS(void)
 			 && MEMORY_dGetByte(addr_s + 1) == check_s_1
 			 && MEMORY_dGetByte(addr_s + 2) == 0x20 && MEMORY_dGetByte(addr_s + 3) == 0x5c
 			 && MEMORY_dGetByte(addr_s + 4) == 0xe4) {
-				ESC_Add(addr_l, ESC_COPENLOAD, CassetteLeaderLoad);
-				ESC_Add(addr_s, ESC_COPENSAVE, CassetteLeaderSave);
+				ESC_Add_Ctx(ESCi, addr_l, ESC_COPENLOAD, CassetteLeaderLoad);
+				ESC_Add_Ctx(ESCi, addr_s, ESC_COPENSAVE, CassetteLeaderSave);
 			}
 		}
-		ESC_AddEscRts(0xe459, ESC_SIOV, SIO_Handler);
+		ESC_AddEscRts_Ctx(ESCi, 0xe459, ESC_SIOV, SIO_Handler);
 		patched = TRUE;
 	}
 	else {
-		ESC_Remove(ESC_COPENLOAD);
-		ESC_Remove(ESC_COPENSAVE);
-		ESC_Remove(ESC_SIOV);
+		ESC_Remove_Ctx(ESCi, ESC_COPENLOAD);
+		ESC_Remove_Ctx(ESCi, ESC_COPENSAVE);
+		ESC_Remove_Ctx(ESCi, ESC_SIOV);
 	};
 	if (patched){
 		UWORD addr;
@@ -292,7 +319,7 @@ void ESC_PatchOS(void)
 	}
 }
 
-void ESC_UpdatePatches(void)
+void ESC_UpdatePatches_Ctx(Atari800_Instance *inst)
 {
 	/* Patch only if OS enabled. */
 	if (Atari800_machine_type != Atari800_MACHINE_5200 &&
@@ -303,7 +330,7 @@ void ESC_UpdatePatches(void)
 			MEMORY_dCopyToMem(MEMORY_os, os_rom_start, 0xd000 - os_rom_start);
 		MEMORY_dCopyToMem(MEMORY_os + 0xd800 - os_rom_start, 0xd800, 0x2800);
 		/* Set patches */
-		ESC_PatchOS();
+		ESC_PatchOS_Ctx(inst);
 		Devices_UpdatePatches();
 	}
 }
