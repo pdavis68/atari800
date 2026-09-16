@@ -190,39 +190,46 @@ extern void dc_set_baud(int baud);
 #define Poke(x,y)  MEMORY_dPutByte(x, y)
 
 /*---------------------------------------------------------------------------
-  Global Variables
+  Context (multi-instance refactor): all state lives in RDevice_state_t
+  (src/instance.h); the legacy names below are aliases routed through the
+  pinned file-scope context RD.
 ---------------------------------------------------------------------------*/
-static int connected;
-static int do_once;
-static int rdev_fd;
+static Atari800_Instance *RDI;
+static RDevice_state_t *RD;
+#define RDEV_PIN_CTX(inst) do { RDI = (inst); RD = &(inst)->rdevice; } while (0)
+#define RDEV_THUNK() RDEV_PIN_CTX(Atari800_default)
+
+#define connected (RD->connected)
+#define do_once (RD->do_once)
+#define rdev_fd (RD->rdev_fd)
 
 #ifdef R_NETWORK
-static struct sockaddr_in in;
-static struct sockaddr_in peer_in;
-static int sock;
-static int portnum = 9000;
-static char inetaddress[256];
-static char CONNECT_STRING[40] = "\r\n_CONNECT 2400\r\n";
-static int retval;
+/* The sockaddr_in blobs are stored opaquely in RDevice_state_t so that
+   instance.h does not need the network headers. */
+#define in (*(struct sockaddr_in *)(void *)RD->in_storage)
+#define peer_in (*(struct sockaddr_in *)(void *)RD->peer_in_storage)
+#define sock (RD->sock)
+#define portnum (RD->portnum)
+#define inetaddress (RD->inetaddress)
+#define CONNECT_STRING (RD->CONNECT_STRING)
+#define retval (RD->retval)
 #endif /* R_NETWORK */
 
-static char MESSAGE[256];
-static char command_buf[256];
-static char bufout[256];
-static int concurrent;
+#define MESSAGE (RD->MESSAGE)
+#define command_buf (RD->command_buf)
+#define bufout (RD->bufout)
+#define concurrent (RD->concurrent)
 
-static int command_end = 0;
-static int translation = 1;
-static int trans_cr = 0;
-static int linefeeds = 1;
-static int bufend = 0;
+#define command_end (RD->command_end)
+#define translation (RD->translation)
+#define trans_cr (RD->trans_cr)
+#define linefeeds (RD->linefeeds)
+#define bufend (RD->bufend)
 
-#ifndef R_NETWORK
-int RDevice_serial_enabled = 1;
-#else
-int RDevice_serial_enabled = 0;  /* Default to network, if enabled. Use parameter to -rdevice command line switch to enable serial mode. */
-#endif
-char RDevice_serial_device[FILENAME_MAX];
+#undef RDevice_serial_enabled
+#undef RDevice_serial_device
+#define RDevice_serial_enabled (RD->serial_enabled)
+#define RDevice_serial_device (RD->serial_device)
 
 /*---------------------------------------------------------------------------
    Host Support Function - If Disconnect signal is found, then close socket
@@ -249,8 +256,9 @@ static void catch_disconnect(int sig)
    Host Support Function - XIO 34 - Called from RDevice_SPEC
    Controls handshake lines DTR, RTS, SD
 ---------------------------------------------------------------------------*/
-static void xio_34(void)
+static void xio_34_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
 #ifndef DREAMCAST  /* Dreamcast port doesn't currently support handshake lines */
   int temp;
   /*int fid;*/
@@ -352,8 +360,9 @@ static void xio_34(void)
    Host Support Function - XIO 36 - Called from RDevice_SPEC
    Sets baud, stop bits, and ready monitoring.
 ---------------------------------------------------------------------------*/
-static void xio_36(void)
+static void xio_36_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   int aux1;
 #if defined(R_SERIAL) && !defined(DREAMCAST)
   struct termios options;
@@ -632,8 +641,9 @@ static void xio_36(void)
    Host Support Function - XIO 38 - Called from RDevice_SPEC
    Sets Translation and parity
 ---------------------------------------------------------------------------*/
-static void xio_38(void)
+static void xio_38_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   int aux1;
 #if defined(R_SERIAL) && !defined(DREAMCAST)
   struct termios options;
@@ -697,8 +707,9 @@ static void xio_38(void)
    Host Support Function - XIO 40 - Called from RDevice_SPEC
    Sets concurrent mode.  Also checks for dropped carrier.
 ---------------------------------------------------------------------------*/
-static void xio_40(void)
+static void xio_40_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
 
   int aux1;
 /*
@@ -729,8 +740,9 @@ static void xio_40(void)
    Host Support Function - Internet Socket Open Connection
 ---------------------------------------------------------------------------*/
 #ifdef R_NETWORK
-static void open_connection(char * address, int port)
+static void open_connection_Ctx(Atari800_Instance *inst, char * address, int port)
 {
+  RDEV_PIN_CTX(inst);
   struct hostent *host;
 #ifdef HAVE_WINDOWS_H
   static int winsock_started;
@@ -835,8 +847,9 @@ static void open_connection(char * address, int port)
    Host Support Function - Serial Open Connection
 ---------------------------------------------------------------------------*/
 #ifdef R_SERIAL
-static void open_connection_serial(int port)
+static void open_connection_serial_Ctx(Atari800_Instance *inst, int port)
 {
+  RDEV_PIN_CTX(inst);
 #ifdef DREAMCAST
   dc_init_serial();
   connected = 1;
@@ -907,8 +920,9 @@ static void open_connection_serial(int port)
    Returns:    "jybolac.homelinux.com"
 ---------------------------------------------------------------------------*/
 #ifdef R_NETWORK
-static void RDevice_GetInetAddress(void)
+static void RDevice_GetInetAddress_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   UWORD bufadr = Devices_SkipDeviceName();
   char *p;
 
@@ -936,8 +950,9 @@ static void RDevice_GetInetAddress(void)
 /*---------------------------------------------------------------------------
    R Device OPEN vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_OPEN(void)
+void RDevice_OPEN_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   int  port;
   int  direction;
   int  devnum;
@@ -963,7 +978,7 @@ void RDevice_OPEN(void)
     if(RDevice_serial_enabled)
     {
       DBG_APRINT("R*: serial mode.");
-      open_connection_serial(devnum);
+      open_connection_serial_Ctx(inst, devnum);
     }
 #endif /* R_SERIAL */
 #if defined(R_SERIAL) && defined(R_NETWORK)
@@ -972,8 +987,8 @@ void RDevice_OPEN(void)
 #ifdef R_NETWORK
     {
       DBG_APRINT("R*: Socket mode.");
-      RDevice_GetInetAddress();
-      open_connection(inetaddress, port);
+      RDevice_GetInetAddress_Ctx(inst);
+      open_connection_Ctx(inst, inetaddress, port);
     }
 #endif /* R_NETWORK */
   }
@@ -984,11 +999,18 @@ void RDevice_OPEN(void)
 
 }
 
+void RDevice_OPEN(void)
+{
+  RDEV_THUNK();
+  RDevice_OPEN_Ctx(Atari800_default);
+}
+
 /*---------------------------------------------------------------------------
    R Device CLOSE vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_CLOS(void)
+void RDevice_CLOS_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   CPU_regA = 1;
   CPU_regY = 1;
   CPU_ClrN;
@@ -997,11 +1019,18 @@ void RDevice_CLOS(void)
   close(rdev_fd);
 }
 
+void RDevice_CLOS(void)
+{
+  RDEV_THUNK();
+  RDevice_CLOS_Ctx(Atari800_default);
+}
+
 /*---------------------------------------------------------------------------
    R Device READ vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_READ(void)
+void RDevice_READ_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   int j;
 
   /*bufend = Peek(747);*/
@@ -1043,13 +1072,20 @@ void RDevice_READ(void)
   CPU_ClrN;
 }
 
+void RDevice_READ(void)
+{
+  RDEV_THUNK();
+  RDevice_READ_Ctx(Atari800_default);
+}
+
 
 
 /*---------------------------------------------------------------------------
    R Device WRITE vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_WRIT(void)
+void RDevice_WRIT_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   unsigned char out_char;
 #ifdef R_NETWORK
   int port;
@@ -1140,7 +1176,7 @@ void RDevice_WRIT(void)
           {
             port = 23;
           }
-          open_connection((char *)(strchr(command_buf, ' ')+1), port); /*send string after first space in line*/
+          open_connection_Ctx(inst, (char *)(strchr(command_buf, ' ')+1), port); /*send string after first space in line*/
         }
         command_buf[command_end] = 0;
         strcat(bufout, "OK\r\n");
@@ -1197,11 +1233,18 @@ void RDevice_WRIT(void)
   CPU_regA = 1;
 }
 
+void RDevice_WRIT(void)
+{
+  RDEV_THUNK();
+  RDevice_WRIT_Ctx(Atari800_default);
+}
+
 /*---------------------------------------------------------------------------
    R Device GET STATUS vector - called from Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_STAT(void)
+void RDevice_STAT_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
 #ifdef HAVE_WINDOWS_H
   int len;
 #else
@@ -1408,11 +1451,18 @@ void RDevice_STAT(void)
   }
 }
 
+void RDevice_STAT(void)
+{
+  RDEV_THUNK();
+  RDevice_STAT_Ctx(Atari800_default);
+}
+
 /*---------------------------------------------------------------------------
    R Device SPECIAL vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_SPEC(void)
+void RDevice_SPEC_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   int iccom;
 
   iccom = Peek(Devices_ICCOMZ);
@@ -1430,16 +1480,16 @@ void RDevice_SPEC(void)
     case 32: /*Force Short Block*/
       break;
     case 34:
-      xio_34();
+      xio_34_Ctx(inst);
       break;
     case 36:
-      xio_36();
+      xio_36_Ctx(inst);
       break;
     case 38:
-      xio_38();
+      xio_38_Ctx(inst);
       break;
     case 40:
-      xio_40();
+      xio_40_Ctx(inst);
       break;
     default:
       DBG_APRINT("R*: Unsupported XIO #.");
@@ -1453,20 +1503,39 @@ void RDevice_SPEC(void)
 
 }
 
+void RDevice_SPEC(void)
+{
+  RDEV_THUNK();
+  RDevice_SPEC_Ctx(Atari800_default);
+}
+
 /*---------------------------------------------------------------------------
    R Device INIT vector - called from Atari OS Device Handler Address Table
 ---------------------------------------------------------------------------*/
-void RDevice_INIT(void)
+void RDevice_INIT_Ctx(Atari800_Instance *inst)
 {
+  RDEV_PIN_CTX(inst);
   DBG_APRINT("R*: INIT");
   CPU_regA = 1;
   CPU_regY = 1;
   CPU_ClrN;
 }
 
-void RDevice_Exit(void)
+void RDevice_INIT(void)
 {
+  RDEV_THUNK();
+  RDevice_INIT_Ctx(Atari800_default);
+}
+
+void RDevice_Exit_Ctx(Atari800_Instance *inst)
+{
+  (void) inst;
 #ifdef HAVE_WINDOWS_H
   WSACleanup();
 #endif /* HAVE_WINDOWS_H */
+}
+
+void RDevice_Exit(void)
+{
+  RDevice_Exit_Ctx(Atari800_default);
 }

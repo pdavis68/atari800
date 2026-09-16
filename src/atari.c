@@ -229,6 +229,18 @@ static Atari800_Instance default_instance_storage = {
 	.rtime = {
 		.enabled = 1,
 	},
+	/* R: device: preserve the old file-scope static initialisers. */
+	.rdevice = {
+#ifdef R_NETWORK
+		.portnum = 9000,
+		.CONNECT_STRING = "\r\n_CONNECT 2400\r\n",
+		.serial_enabled = 0, /* default to network; -rdevice enables serial */
+#else
+		.serial_enabled = 1,
+#endif
+		.translation = 1,
+		.linefeeds = 1,
+	},
 	/* Input: preserve the old file-scope static initialisers. */
 	.input = {
 		.key_code = AKEY_NONE,
@@ -264,6 +276,21 @@ static Atari800_Instance default_instance_storage = {
 		.h_exe_path = "H1:>DOS;>DOS",
 		.h_device_name = 'H',
 		.print_command = "lpr %s",
+	},
+	/* Screen: preserve the old file-scope static initialisers. */
+	.screen = {
+		.visible_x1 = 24,
+		.visible_x2 = 360,
+		.visible_y2 = Screen_HEIGHT,
+		.show_disk_led = TRUE,
+		.show_1200_leds = TRUE,
+#ifdef SCREENSHOTS
+		.screenshot_no_last = -1,
+#endif
+#if defined(AUDIO_RECORDING) || defined(VIDEO_RECORDING)
+		.show_multimedia_stats = TRUE,
+#endif
+		.percent_display = 100,
 	},
 };
 Atari800_Instance *Atari800_default = &default_instance_storage;

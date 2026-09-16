@@ -25,6 +25,22 @@
 #ifndef RDEVICE_H_
 #define RDEVICE_H_
 
+#include "instance.h" /* Atari800_Instance, Atari800_default */
+
+/* Context-aware entry points. */
+extern void RDevice_OPEN_Ctx(Atari800_Instance *inst);
+extern void RDevice_CLOS_Ctx(Atari800_Instance *inst);
+extern void RDevice_READ_Ctx(Atari800_Instance *inst);
+extern void RDevice_WRIT_Ctx(Atari800_Instance *inst);
+extern void RDevice_STAT_Ctx(Atari800_Instance *inst);
+extern void RDevice_SPEC_Ctx(Atari800_Instance *inst);
+extern void RDevice_INIT_Ctx(Atari800_Instance *inst);
+
+extern void RDevice_Exit_Ctx(Atari800_Instance *inst);
+
+/* The RDevice_OPEN..INIT functions are registered as context-free escape
+   handlers (ESC_AddEscRts in devices.c); they remain real functions that
+   pin the default instance and forward to the _Ctx versions. */
 extern void RDevice_OPEN(void);
 extern void RDevice_CLOS(void);
 extern void RDevice_READ(void);
@@ -33,9 +49,10 @@ extern void RDevice_STAT(void);
 extern void RDevice_SPEC(void);
 extern void RDevice_INIT(void);
 
-extern int RDevice_serial_enabled;
-extern char RDevice_serial_device[];
-
 extern void RDevice_Exit(void);
+
+/* State aliases (transitional: default instance). */
+#define RDevice_serial_enabled (Atari800_default->rdevice.serial_enabled)
+#define RDevice_serial_device  (Atari800_default->rdevice.serial_device)
 
 #endif /* RDEVICE_H_ */

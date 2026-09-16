@@ -42,32 +42,60 @@
 #include "file_export.h"
 #endif
 
-ULONG *Screen_atari = NULL;
+/* Transitional Option C bridge: the per-instance Screen state lives in
+   Screen_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (SC = &inst->screen, SCI = inst) via SCREEN_PIN_CTX(inst); inside
+   this file the legacy state names route through SC, so the _Ctx bodies
+   operate on their own instance. Non-zero defaults are preserved in the
+   default-instance initializer in atari.c. */
+static Screen_state_t *SC;
+static Atari800_Instance *SCI;
+
+#define SCREEN_PIN_CTX(inst) do { \
+	SC = &(inst)->screen; \
+	SCI = (inst); \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef Screen_atari
+#define Screen_atari (SC->atari)
 #ifdef DIRTYRECT
-UBYTE *Screen_dirty = NULL;
+#undef Screen_dirty
+#define Screen_dirty (SC->dirty)
 #endif
 #ifdef BITPL_SCR
-ULONG *Screen_atari_b = NULL;
-ULONG *Screen_atari1 = NULL;
-ULONG *Screen_atari2 = NULL;
+#undef Screen_atari_b
+#define Screen_atari_b (SC->atari_b)
+#undef Screen_atari1
+#define Screen_atari1 (SC->atari1)
+#undef Screen_atari2
+#define Screen_atari2 (SC->atari2)
 #endif
+#undef Screen_visible_x1
+#define Screen_visible_x1 (SC->visible_x1)
+#undef Screen_visible_y1
+#define Screen_visible_y1 (SC->visible_y1)
+#undef Screen_visible_x2
+#define Screen_visible_x2 (SC->visible_x2)
+#undef Screen_visible_y2
+#define Screen_visible_y2 (SC->visible_y2)
+#undef Screen_show_atari_speed
+#define Screen_show_atari_speed (SC->show_atari_speed)
+#undef Screen_show_disk_led
+#define Screen_show_disk_led (SC->show_disk_led)
+#undef Screen_show_sector_counter
+#define Screen_show_sector_counter (SC->show_sector_counter)
+#undef Screen_show_1200_leds
+#define Screen_show_1200_leds (SC->show_1200_leds)
+#undef Screen_show_multimedia_stats
+#define Screen_show_multimedia_stats (SC->show_multimedia_stats)
 
-/* The area that can been seen is Screen_visible_x1 <= x < Screen_visible_x2,
-   Screen_visible_y1 <= y < Screen_visible_y2.
-   Full Atari screen is 336x240. Screen_WIDTH is 384 only because
-   the code in antic.c sometimes draws more than 336 bytes in a line.
-   Currently Screen_visible variables are used only to place
-   disk led and snailmeter in the corners of the screen.
-*/
-int Screen_visible_x1 = 24;				/* 0 .. Screen_WIDTH */
-int Screen_visible_y1 = 0;				/* 0 .. Screen_HEIGHT */
-int Screen_visible_x2 = 360;			/* 0 .. Screen_WIDTH */
-int Screen_visible_y2 = Screen_HEIGHT;	/* 0 .. Screen_HEIGHT */
-
-int Screen_show_atari_speed = FALSE;
-int Screen_show_disk_led = TRUE;
-int Screen_show_sector_counter = FALSE;
-int Screen_show_1200_leds = TRUE;
+/* Previously file-scope statics / function-local statics. */
+#define status_text          (SC->status_text)
+#define status_text_duration (SC->status_text_duration)
+#define percent_display      (SC->percent_display)
+#define last_updated         (SC->last_updated)
+#define last_time            (SC->last_time)
 
 #ifdef SCREENSHOTS
 #ifdef HAVE_LIBPNG
@@ -76,20 +104,38 @@ int Screen_show_1200_leds = TRUE;
 #define DEFAULT_SCREENSHOT_FILENAME_FORMAT "atari###.pcx"
 #endif
 
-static char screenshot_filename_format[FILENAME_MAX];
-static int screenshot_no_last = -1;
-static int screenshot_no_max = 0;
-#endif /* !SCREENSHOTS */
+#define screenshot_filename_format (SC->screenshot_filename_format)
+#define screenshot_no_last         (SC->screenshot_no_last)
+#define screenshot_no_max          (SC->screenshot_no_max)
+#endif /* SCREENSHOTS */
 
-#if defined(AUDIO_RECORDING) || defined(VIDEO_RECORDING)
-int Screen_show_multimedia_stats = TRUE;
-#endif
+/* Per-instance chip/peripheral state accessed by the drawing functions. */
+#undef SIO_last_op
+#define SIO_last_op      (SCI->sio.last_op)
+#undef SIO_last_op_time
+#define SIO_last_op_time (SCI->sio.last_op_time)
+#undef SIO_last_drive
+#define SIO_last_drive   (SCI->sio.last_drive)
+#undef SIO_last_sector
+#define SIO_last_sector  (SCI->sio.last_sector)
+#undef CASSETTE_readable
+#define CASSETTE_readable (SCI->cassette.readable)
+#undef CASSETTE_record
+#define CASSETTE_record   (SCI->cassette.record)
+#undef CASSETTE_writable
+#define CASSETTE_writable (SCI->cassette.writable)
+#undef PIA_PORTB
+#define PIA_PORTB      (SCI->pia.PORTB)
+#undef PIA_PORTB_mask
+#define PIA_PORTB_mask (SCI->pia.PORTB_mask)
 
-int Screen_Initialise(int *argc, char *argv[])
+int Screen_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i;
 	int j;
 	int help_only = FALSE;
+
+	SCREEN_PIN_CTX(inst);
 
 	for (i = j = 1; i < *argc; i++) {
 #ifdef SCREENSHOTS
@@ -150,7 +196,7 @@ int Screen_Initialise(int *argc, char *argv[])
 		memset(Screen_atari, 0, Screen_HEIGHT * Screen_WIDTH);
 #ifdef DIRTYRECT
 		Screen_dirty = (UBYTE *) Util_malloc(Screen_HEIGHT * Screen_WIDTH / 8);
-		Screen_EntireDirty();
+		Screen_EntireDirty_Ctx(SCI);
 #endif
 #ifdef BITPL_SCR
 		Screen_atari_b = (ULONG *) Util_malloc(Screen_HEIGHT * Screen_WIDTH);
@@ -163,8 +209,9 @@ int Screen_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-int Screen_ReadConfig(char *string, char *ptr)
+int Screen_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	SCREEN_PIN_CTX(inst);
 	if (strcmp(string, "SCREEN_SHOW_SPEED") == 0)
 		return (Screen_show_atari_speed = Util_sscanbool(ptr)) != -1;
 	else if (strcmp(string, "SCREEN_SHOW_IO_ACTIVITY") == 0)
@@ -181,8 +228,9 @@ int Screen_ReadConfig(char *string, char *ptr)
 	return TRUE;
 }
 
-void Screen_WriteConfig(FILE *fp)
+void Screen_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	SCREEN_PIN_CTX(inst);
 	fprintf(fp, "SCREEN_SHOW_SPEED=%d\n", Screen_show_atari_speed);
 	fprintf(fp, "SCREEN_SHOW_IO_ACTIVITY=%d\n", Screen_show_disk_led);
 	fprintf(fp, "SCREEN_SHOW_IO_COUNTER=%d\n", Screen_show_sector_counter);
@@ -628,7 +676,7 @@ static void SmallFont_DrawChar(UBYTE *screen, int ch, UBYTE color1, UBYTE color2
 		int mask;
 		src = font[ch][y];
 		for (mask = 1 << (SMALLFONT_WIDTH - 1); mask != 0; mask >>= 1) {
-			ANTIC_VideoPutByte(screen, (UBYTE) ((src & mask) != 0 ? color1 : color2));
+			ANTIC_VideoPutByte_Ctx(SCI, screen, (UBYTE) ((src & mask) != 0 ? color1 : color2));
 			screen++;
 		}
 		screen += Screen_WIDTH - SMALLFONT_WIDTH;
@@ -647,12 +695,10 @@ static UBYTE *SmallFont_DrawInt(UBYTE *screen, int n, UBYTE color1, UBYTE color2
 	return screen;
 }
 
-void Screen_DrawAtariSpeed(double cur_time)
+void Screen_DrawAtariSpeed_Ctx(Atari800_Instance *inst, double cur_time)
 {
+	SCREEN_PIN_CTX(inst);
 	if (Screen_show_atari_speed) {
-		static int percent_display = 100;
-		static int last_updated = 0;
-		static double last_time = 0;
 		if ((cur_time - last_time) >= 0.5) {
 			percent_display = (int) (100 * (Atari800_nframes - last_updated) / (cur_time - last_time) / (Atari800_tv_mode == Atari800_TV_PAL ? 50 : 60));
 			last_updated = Atari800_nframes;
@@ -669,8 +715,9 @@ void Screen_DrawAtariSpeed(double cur_time)
 	}
 }
 
-void Screen_DrawDiskLED(void)
+void Screen_DrawDiskLED_Ctx(Atari800_Instance *inst)
 {
+	SCREEN_PIN_CTX(inst);
 	if (Screen_show_disk_led || Screen_show_sector_counter) {
 		UBYTE *screen = (UBYTE *) Screen_atari + Screen_visible_x2 - SMALLFONT_WIDTH
 				        + (Screen_visible_y2 - SMALLFONT_HEIGHT) * Screen_WIDTH;
@@ -694,17 +741,18 @@ void Screen_DrawDiskLED(void)
 				/* Displaying tape length during saving is pointless since it would equal the number
 				of the currently-written block, which is already displayed. */
 				if (!CASSETTE_record) {
-					screen = SmallFont_DrawInt(screen - SMALLFONT_WIDTH, CASSETTE_GetSize(), 0x00, 0x88);
+					screen = SmallFont_DrawInt(screen - SMALLFONT_WIDTH, CASSETTE_GetSize_Ctx(SCI), 0x00, 0x88);
 					SmallFont_DrawChar(screen, SMALLFONT_SLASH, 0x00, 0x88);
 				}
-				SmallFont_DrawInt(screen - SMALLFONT_WIDTH, CASSETTE_GetPosition(), 0x00, 0x88);
+				SmallFont_DrawInt(screen - SMALLFONT_WIDTH, CASSETTE_GetPosition_Ctx(SCI), 0x00, 0x88);
 			}
 		}
 	}
 }
 
-void Screen_Draw1200LED(void)
+void Screen_Draw1200LED_Ctx(Atari800_Instance *inst)
 {
+	SCREEN_PIN_CTX(inst);
 	if (Screen_show_1200_leds && Atari800_keyboard_leds) {
 		UBYTE *screen = (UBYTE *) Screen_atari + Screen_visible_x1 + SMALLFONT_WIDTH * 10
 			+ (Screen_visible_y2 - SMALLFONT_HEIGHT) * Screen_WIDTH;
@@ -781,8 +829,9 @@ static UBYTE *SmallFont_DrawString(UBYTE *screen, const char *s, UBYTE color1, U
 }
 
 #if defined(AUDIO_RECORDING) || defined(VIDEO_RECORDING)
-void Screen_DrawMultimediaStats(void)
+void Screen_DrawMultimediaStats_Ctx(Atari800_Instance *inst)
 {
+	SCREEN_PIN_CTX(inst);
 	if (Screen_show_multimedia_stats) {
 		int elapsed_time;
 		int size;
@@ -852,16 +901,15 @@ void Screen_DrawMultimediaStats(void)
 }
 #endif /* defined(AUDIO_RECORDING) || defined(VIDEO_RECORDING) */
 
-char status_text[60] = {0};
-int status_text_duration = 0;
-
-void Screen_SetStatusText(const char* text, int duration) {
+void Screen_SetStatusText_Ctx(Atari800_Instance *inst, const char* text, int duration) {
+	SCREEN_PIN_CTX(inst);
 	strncpy(status_text, text, sizeof(status_text));
 	status_text[sizeof(status_text) - 1] = 0;
 	status_text_duration = duration;
 }
 
-void Screen_DrawStatusText(void) {
+void Screen_DrawStatusText_Ctx(Atari800_Instance *inst) {
+	SCREEN_PIN_CTX(inst);
 	int len = strlen(status_text);
 	int width = Screen_visible_x2 - Screen_visible_x1;
 	UBYTE* screen = (UBYTE*)Screen_atari + Screen_visible_x1 + (width - len * SMALLFONT_WIDTH) / 2
@@ -874,9 +922,11 @@ void Screen_DrawStatusText(void) {
 }
 
 #ifdef SCREENSHOTS
-int Screen_SaveScreenshot(const char *filename, int interlaced)
+int Screen_SaveScreenshot_Ctx(Atari800_Instance *inst, const char *filename, int interlaced)
 {
 	int result;
+
+	SCREEN_PIN_CTX(inst);
 	ULONG *main_screen_atari;
 	UBYTE *ptr1;
 	UBYTE *ptr2;
@@ -890,7 +940,7 @@ int Screen_SaveScreenshot(const char *filename, int interlaced)
 	if (interlaced) {
 		Screen_atari = (ULONG *) Util_malloc(Screen_WIDTH * Screen_HEIGHT);
 		ptr2 = (UBYTE *) Screen_atari;
-		ANTIC_Frame(TRUE); /* draw on Screen_atari */
+		ANTIC_Frame_Ctx(SCI, TRUE); /* draw on Screen_atari */
 	}
 	else {
 		ptr2 = NULL;
@@ -906,19 +956,22 @@ int Screen_SaveScreenshot(const char *filename, int interlaced)
 	return result;
 }
 
-void Screen_SaveNextScreenshot(int interlaced)
+void Screen_SaveNextScreenshot_Ctx(Atari800_Instance *inst, int interlaced)
 {
 	char filename[FILENAME_MAX];
+
+	SCREEN_PIN_CTX(inst);
 	if (!screenshot_no_max) {
 		screenshot_no_max = Util_filenamepattern(DEFAULT_SCREENSHOT_FILENAME_FORMAT, screenshot_filename_format, FILENAME_MAX, NULL);
 	}
 	Util_findnextfilename(screenshot_filename_format, &screenshot_no_last, screenshot_no_max, filename, sizeof(filename), TRUE);
-	Screen_SaveScreenshot(filename, interlaced);
+	Screen_SaveScreenshot_Ctx(SCI, filename, interlaced);
 }
 #endif /* !SCREENSHOTS */
 
-void Screen_EntireDirty(void)
+void Screen_EntireDirty_Ctx(Atari800_Instance *inst)
 {
+	SCREEN_PIN_CTX(inst);
 #ifdef DIRTYRECT
 	if (Screen_dirty)
 		memset(Screen_dirty, 1, Screen_WIDTH * Screen_HEIGHT / 8);

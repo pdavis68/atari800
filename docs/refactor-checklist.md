@@ -36,8 +36,12 @@ refactor. It is the working companion to
       `ANTIC_state_t`, `GTIA_state_t`, `POKEY_state_t`, `PIA_state_t`.
 - [ ] Define peripheral sub-structs: `SIO_state_t`, `Devices_state_t`,
       `Cartridge_state_t`, `Cassette_state_t`, `PBI_state_t`, `Input_state_t`,
-      `Screen_state_t`, `Sound_state_t` (currently forward-declared, referenced
-      by pointer; to be defined in later phases).
+      `Screen_state_t`, `Sound_state_t`. Done so far (embedded by value in
+      `Atari800_Instance`): `SIO_state_t`, `Devices_state_t`,
+      `Cartridge_state_t`, `Cassette_state_t`, `PBI_state_t` (+ SCSI/BB/MIO/
+      ESC/Binload/RTIME/Voicebox/Pokeyrec/IDE/AF80/BIT3/PROTO80/XLD/XEP80/
+      RDevice/Input), and `Screen_state_t` (2026-09-16). Still
+      forward-declared: `Sound_state_t` (Phase 4.3).
 - [x] Define the lifecycle API prototypes (`Atari800_NewInstance`, etc.).
 - [x] Add the transitional `Atari800_default` instance pointer.
 
@@ -281,9 +285,9 @@ refactor. It is the working companion to
 
 ## Phase 3 — Peripheral modules
 
-> **Status: in progress.** SIO, Devices, Cartridge, Cassette, PBI, the
+> **Status: nearly complete.** SIO, Devices, Cartridge, Cassette, PBI, the
 > PBI SCSI/Black Box/MIO sub-modules, the ESC/Binload handlers, RTIME, and
-> Input (§3.9) done (2026-09-15). All of them now expose
+> Input (§3.9) done (2026-09-15); Rdevice done (2026-09-16). All of them now expose
 > `*_Ctx(Atari800_Instance *inst, ...)` entry points with legacy-name
 > forwarding macros in their headers. Verified with the Acid800 suite
 > (`-atari test/acid800.atr -acid800 test/acid800.expected`): results
@@ -637,8 +641,9 @@ refactor. It is the working companion to
       the default-instance initializer in `atari.c`. Build passes;
       Acid800 results identical to pre-refactor baseline; 20 s smoke run
       clean.
-> **Status:** RTIME, XEP80, AF80, BIT3, IDE, Voicebox, and Pokeyrec done
-> (2026-09-15). Votrax deferred (see below); Rdevice remains.
+> **Status:** RTIME, XEP80, AF80, BIT3, IDE, Voicebox, Pokeyrec, and Rdevice
+> done (2026-09-16). Votrax deferred (see below; revisit together with
+> Sound/Pokeysnd in §4.3). Phase 3 is now complete except Votrax.
 
 - [x] **XEP80** — [`src/xep80.h`](src/xep80.h), [`src/xep80.c`](src/xep80.c):
       `XEP80_SetEnabled`, `XEP80_GetBit`, `XEP80_PutBit`, `XEP80_ChangeColors`,
@@ -822,8 +827,49 @@ refactor. It is the working companion to
       Done 2026-09-15: `Pokeyrec_state_t` defined in
       [`src/instance.h`](src/instance.h) and **embedded by value** in
       `Atari800_Instance` (`.pokeyrec`).
-- [ ] **Rdevice** — [`src/rdevice.h`](src/rdevice.h): all `RDevice_*` functions
-      and state. (Remaining; ~1500-line module, next pass.)
+- [x] **Rdevice** — [`src/rdevice.h`](src/rdevice.h), [`src/rdevice.c`](src/rdevice.c):
+      `RDevice_OPEN`, `RDevice_CLOS`, `RDevice_READ`, `RDevice_WRIT`,
+      `RDevice_STAT`, `RDevice_SPEC`, `RDevice_INIT`, `RDevice_Exit`; state
+      `RDevice_serial_enabled`, `RDevice_serial_device`.
+      Done 2026-09-16: each is now
+      `RDevice_*_Ctx(Atari800_Instance *inst, ...)` in `rdevice.c`, pinning
+      the file-scope context (`RD = &inst->rdevice`, `RDI = inst`) via
+      `RDEV_PIN_CTX(inst)`; all state aliases inside `rdevice.c` route
+      through `RD` (including the internal helpers `xio_34/36/38/40_Ctx`,
+      `open_connection_Ctx`, `open_connection_serial_Ctx`, and
+      `RDevice_GetInetAddress_Ctx`, which take the instance). In `rdevice.h`
+      the legacy state names are forwarding macros passing
+      `Atari800_default`. The `RDevice_OPEN..INIT` functions remain real
+      functions (registered as context-free escape handlers via
+      `ESC_AddEscRts` in `devices.c`) that pin the default instance and
+      forward to the `_Ctx` versions — same deferred ESC-handler
+      consideration as `SIO_Handler`/`loader_cont`. `RDevice_Exit` likewise
+      forwards (its `WSACleanup` is process-global). The two
+      `struct sockaddr_in` blobs are stored opaquely in `RDevice_state_t`
+      (`in_storage`/`peer_in_storage`, cast in `rdevice.c`) so
+      [`src/instance.h`](src/instance.h) does not need the network headers.
+      `catch_disconnect` (the SIGPIPE/SIGHUP handler) stays a context-free
+      function operating on the pinned context. Build passes; 20 s no-disk
+      smoke run clean (no CIM); Acid800 results identical to pre-refactor
+      baseline.
+- [x] Move state (Rdevice): `RDevice_serial_enabled`,
+      `RDevice_serial_device` plus the previously file-scope statics
+      (`connected`, `do_once`, `rdev_fd`, `in`/`peer_in` sockaddr storage,
+      `sock`, `portnum`, `inetaddress[256]`, `CONNECT_STRING[40]`,
+      `retval`, `MESSAGE[256]`, `command_buf[256]`, `bufout[256]`,
+      `concurrent`, `command_end`, `translation`, `trans_cr`, `linefeeds`,
+      `bufend`).
+      Done 2026-09-16: all moved into `RDevice_state_t`
+      ([`src/instance.h`](src/instance.h)) and **embedded by value** in
+      `Atari800_Instance` (`.rdevice`); `rdevice.c`/`rdevice.h` alias the
+      legacy names to `Atari800_default->rdevice.*`. Defaults preserved in
+      the `atari.c` initializer (`portnum = 9000`,
+      `CONNECT_STRING = "\r\n_CONNECT 2400\r\n"`, `translation = 1`,
+      `linefeeds = 1`, `serial_enabled` = 0 with R_NETWORK / 1 without);
+      the rest match the old static initialisers via zero-init. Remaining
+      file-scope: `ioctlsocket_non_block` (Windows-only constant) and the
+      Windows-only `winsock_started` function-local static in
+      `open_connection_Ctx` (WSAStartup is process-global).
 
 ### 3.8 ESC / Binload handlers
 
@@ -933,18 +979,70 @@ refactor. It is the working companion to
 
 ## Phase 4 — Output / input / platform layer
 
+> **Status: in progress.** Screen (§4.1) done (2026-09-16). All public Screen
+> functions now expose `*_Ctx(Atari800_Instance *inst, ...)` entry points with
+> legacy-name forwarding macros in `screen.h`; `Screen_state_t` is defined
+> concretely in [`src/instance.h`](src/instance.h) and **embedded by value** in
+> `Atari800_Instance` (`.screen`, replacing the earlier forward-declared
+> pointer member). Build passes; 20 s no-disk smoke run clean (no CIM);
+> Acid800 results identical to the pre-refactor baseline (23 success /
+> 28 expected failures / 2 skipped; the 2 FAILs — "MMU: XL banking" and
+> "suite totals changed" — are pre-existing, see
+> [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
+
 ### 4.1 Screen — [`src/screen.h`](src/screen.h), [`src/screen.c`](src/screen.c)
 
-- [ ] Convert: `Screen_Initialise`, `Screen_DrawAtariSpeed`, `Screen_DrawDiskLED`,
-      `Screen_Draw1200LED`, `Screen_DrawMultimediaStats`,
-      `Screen_FindScreenshotFilename`, `Screen_SaveScreenshot`,
+- [x] Convert: `Screen_Initialise`, `Screen_ReadConfig`, `Screen_WriteConfig`,
+      `Screen_DrawAtariSpeed`, `Screen_DrawDiskLED`, `Screen_Draw1200LED`,
+      `Screen_DrawMultimediaStats`, `Screen_SaveScreenshot`,
       `Screen_SaveNextScreenshot`, `Screen_EntireDirty`, `Screen_SetStatusText`,
       `Screen_DrawStatusText`.
-- [ ] Move state: `Screen_atari` (framebuffer), `Screen_atari_b/1/2` (BITPL_SCR),
+      Done 2026-09-16: each is now
+      `Screen_*_Ctx(Atari800_Instance *inst, ...)` in `screen.c`, pinning the
+      file-scope context (`SC = &inst->screen`, `SCI = inst`) via
+      `SCREEN_PIN_CTX(inst)`; all state aliases inside `screen.c` route
+      through `SC`. In `screen.h` the legacy names are forwarding macros
+      passing `Atari800_default`. Include-cycle note: `instance.h` includes
+      `screen.h` (for the ANTIC `pm_scanline` buffer size), so `screen.h`
+      defines `Screen_WIDTH`/`Screen_HEIGHT` and forward-declares
+      `struct Atari800_Instance` for the `_Ctx` prototypes *before*
+      including `instance.h`; the aliases/forwarding macros come after.
+      Per-instance end-to-end: the `_Ctx` bodies re-point `SIO_last_*` to
+      `SCI->sio.*`, `CASSETTE_readable/record/writable` to `SCI->cassette.*`
+      (calling `CASSETTE_GetSize_Ctx`/`GetPosition_Ctx(SCI)`), `PIA_PORTB`/
+      `PIA_PORTB_mask` to `SCI->pia.*`, and call
+      `ANTIC_VideoPutByte_Ctx(SCI, ...)` / `ANTIC_Frame_Ctx(SCI, TRUE)`.
+      Transitional (still default-instance): `Atari800_nframes`,
+      `Atari800_tv_mode`, `Atari800_keyboard_leds` (top-level config, §4.4)
+      and the `File_Export_*` calls (§4.2). The stale, never-defined
+      `Screen_FindScreenshotFilename` declaration was dropped from
+      `screen.h`. Build passes; 20 s no-disk smoke run clean (no CIM);
+      Acid800 results identical to the pre-refactor baseline.
+- [x] Move state: `Screen_atari` (framebuffer pointer, heap-allocated by
+      `Screen_Initialise_Ctx`), `Screen_atari_b/1/2` (BITPL_SCR),
       `Screen_dirty` (DIRTYRECT), `Screen_visible_x1/y1/x2/y2`,
       `Screen_show_atari_speed`, `Screen_show_disk_led`,
       `Screen_show_sector_counter`, `Screen_show_1200_leds`,
-      `Screen_show_multimedia_stats`.
+      `Screen_show_multimedia_stats`, plus the previously file-scope
+      statics (`screenshot_filename_format`, `screenshot_no_last`,
+      `screenshot_no_max` under SCREENSHOTS, `status_text[60]`,
+      `status_text_duration`) and the function-local statics in
+      `Screen_DrawAtariSpeed` (`percent_display`, `last_updated`,
+      `last_time`).
+      Done 2026-09-16: all moved into `Screen_state_t`
+      ([`src/instance.h`](src/instance.h)); `screen.c`/`screen.h` alias the
+      legacy names to `Atari800_default->screen.*`. Default-instance init
+      preserved in `atari.c` (`visible_x1 = 24`, `visible_x2 = 360`,
+      `visible_y2 = Screen_HEIGHT`, `show_disk_led = TRUE`,
+      `show_1200_leds = TRUE`, `show_multimedia_stats = TRUE` under
+      AUDIO/VIDEO_RECORDING, `screenshot_no_last = -1` under SCREENSHOTS,
+      `percent_display = 100`); the rest match the old static initialisers
+      via zero-init. Platform ports that read/assign `Screen_atari`
+      (falcon, sdl, dc, ps2, gles2, android, javanvm, amiga, dos, x11, rpi)
+      keep working via the header aliases (transitional; Phase 6). Note:
+      `wince/port/main.c` self-declares `extern UBYTE *Screen_dirty;` /
+      `extern void Screen_EntireDirty(void);` without including `screen.h`
+      — it will need updating in Phase 6 (not part of the Linux build).
 
 ### 4.2 Colours / video filters
 

@@ -672,6 +672,34 @@ typedef struct IDE_state_t {
 	struct ide_device *dev;
 } IDE_state_t;
 
+/* R: device (Atari 850). The two sockaddr_in blobs are stored opaquely so
+   instance.h does not need the network headers; rdevice.c casts them. */
+typedef struct RDevice_state_t {
+	int connected;
+	int do_once;
+	int rdev_fd;
+#ifdef R_NETWORK
+	unsigned char in_storage[64];       /* struct sockaddr_in */
+	unsigned char peer_in_storage[64];  /* struct sockaddr_in */
+	int sock;
+	int portnum;
+	char inetaddress[256];
+	char CONNECT_STRING[40];
+	int retval;
+#endif
+	char MESSAGE[256];
+	char command_buf[256];
+	char bufout[256];
+	int concurrent;
+	int command_end;
+	int translation;
+	int trans_cr;
+	int linefeeds;
+	int bufend;
+	int serial_enabled;
+	char serial_device[FILENAME_MAX];
+} RDevice_state_t;
+
 typedef struct Input_state_t {
 	/* Keyboard */
 	int key_code;   /* regular Atari key code */
@@ -722,7 +750,41 @@ typedef struct Input_state_t {
 	int bit5_5200;
 } Input_state_t;
 
-typedef struct Screen_state_t Screen_state_t;
+typedef struct Screen_state_t {
+	ULONG *atari; /* the framebuffer (Screen_WIDTH * Screen_HEIGHT bytes) */
+#ifdef BITPL_SCR
+	ULONG *atari_b;
+	ULONG *atari1;
+	ULONG *atari2;
+#endif
+#ifdef DIRTYRECT
+	UBYTE *dirty; /* dirty-rectangle tracking (Screen_WIDTH * Screen_HEIGHT / 8 bytes) */
+#endif
+	/* The area that can been seen is visible_x1 <= x < visible_x2,
+	   visible_y1 <= y < visible_y2. */
+	int visible_x1;
+	int visible_y1;
+	int visible_x2;
+	int visible_y2;
+	int show_atari_speed;
+	int show_disk_led;
+	int show_sector_counter;
+	int show_1200_leds;
+	int show_multimedia_stats;
+	/* Internal state (previously file-scope statics in screen.c) */
+#ifdef SCREENSHOTS
+	char screenshot_filename_format[FILENAME_MAX];
+	int screenshot_no_last;
+	int screenshot_no_max;
+#endif
+	char status_text[60];
+	int status_text_duration;
+	/* Screen_DrawAtariSpeed internals (previously function-local statics) */
+	int percent_display;
+	int last_updated;
+	double last_time;
+} Screen_state_t;
+
 typedef struct Sound_state_t Sound_state_t;
 
 /* ------------------------------------------------------------------ */
@@ -759,7 +821,8 @@ typedef struct Atari800_Instance {
 	Input_state_t input;
 	XLD_state_t xld;
 	XEP80_state_t xep80;
-	Screen_state_t *screen;
+	RDevice_state_t rdevice;
+	Screen_state_t screen;
 	Sound_state_t *sound;
 
 	/* Top-level configuration */
