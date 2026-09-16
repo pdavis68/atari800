@@ -482,6 +482,125 @@ typedef struct MIO_state_t {
 	char scsi_disk_filename[FILENAME_MAX];
 } MIO_state_t;
 
+/* XEP80 geometry (moved here from xep80.h so XEP80_state_t can embed the
+   display buffers by value). */
+#define XEP80_WIDTH 256
+#define XEP80_HEIGHT 25
+#define XEP80_CHAR_WIDTH 7
+#define XEP80_MAX_CHAR_HEIGHT 12
+#define XEP80_GRAPH_WIDTH 320
+#define XEP80_GRAPH_HEIGHT 200
+#define XEP80_LINE_LEN 80
+#define XEP80_SCRN_WIDTH (XEP80_LINE_LEN * XEP80_CHAR_WIDTH)
+#define XEP80_MAX_SCRN_HEIGHT (XEP80_HEIGHT * XEP80_MAX_CHAR_HEIGHT)
+
+typedef struct XEP80_state_t {
+	/* Is XEP80 enabled? Don't change directly, use XEP80_SetEnabled(). */
+	int enabled;
+	int port;
+	/* Current height of the XEP80 screen / of XEP80 characters. */
+	int scrn_height;
+	int char_height;
+	/* Display buffers. */
+	UBYTE screen_1[XEP80_SCRN_WIDTH*XEP80_MAX_SCRN_HEIGHT];
+	UBYTE screen_2[XEP80_SCRN_WIDTH*XEP80_MAX_SCRN_HEIGHT];
+	/* Path to the XEP80's charset ROM image. */
+	char charset_filename[FILENAME_MAX];
+	/* Serial-protocol state. */
+	int output_word;
+	UWORD input_queue[10]; /* IN_QUEUE_SIZE */
+	int input_count;
+	unsigned int start_trans_cpu_clock;
+	int receiving;
+	/* Internal NS405 RAM registers / rendering state. */
+	int ypos;
+	int xpos;
+	UBYTE last_char;
+	int lmargin;
+	int rmargin;
+	int xscroll;
+	UBYTE *line_pointers[XEP80_HEIGHT];
+	int old_ypos;
+	int old_xpos;
+	int list_mode;
+	int escape_mode;
+	int burst_mode;
+	int screen_output;
+	/* Attribute Latch 0. */
+	UBYTE attrib_a;
+	int font_a_index;
+	int font_a_double;
+	int font_a_blank;
+	int font_a_blink;
+	/* Attribute Latch 1. */
+	UBYTE attrib_b;
+	int font_b_index;
+	int font_b_double;
+	int font_b_blank;
+	int font_b_blink;
+	/* TCP. */
+	int cursor_on;
+	int graphics_mode;
+	int pal_mode;
+	/* VCR. */
+	int blink_reverse;
+	int cursor_blink;
+	int cursor_overwrite;
+	int inverse_mode;
+	int char_set;
+	/* CURS. */
+	int cursor_x;
+	int cursor_y;
+	int curs;
+	/* 8 KB of video RAM. */
+	UBYTE video_ram[0x2000];
+} XEP80_state_t;
+
+typedef struct XLD_state_t {
+	/* TRUE to emulate the 1450XLD / 1400XL (voice + optional parallel disk). */
+	int enabled;
+	int v_enabled;   /* voice box */
+	int d_enabled;   /* parallel disk */
+	/* ROM images (heap-allocated when enabled). */
+	UBYTE *voicerom;
+	UBYTE *diskrom;
+	char d_rom_filename[FILENAME_MAX];
+	char v_rom_filename[FILENAME_MAX];
+	/* Voice/modem latches. */
+	UBYTE votrax_latch;
+	UBYTE modem_latch;
+	/* Parallel Disk I/O (PIO) transfer state. */
+	UBYTE CommandFrame[6];
+	int CommandIndex;
+	UBYTE DataBuffer[256 + 3];
+	int DataIndex;
+	int TransferStatus;
+	int ExpectedBytes;
+} XLD_state_t;
+
+typedef struct AF80_state_t {
+	/* TRUE to emulate the Austin Franklin 80 column board. */
+	int enabled;
+	/* ROM/charset images (0x1000 bytes each, heap-allocated when enabled). */
+	UBYTE *rom;
+	char rom_filename[FILENAME_MAX];
+	UBYTE *charset;
+	char charset_filename[FILENAME_MAX];
+	/* 2 KB video RAM + attribute RAM (heap-allocated when enabled). */
+	UBYTE *screen;
+	UBYTE *attrib;
+	/* Register/bank state. */
+	int rom_bank_select;          /* bits 0-3 of d5f7, $0-$f 16 banks */
+	int not_rom_output_enable;    /* bit 4 of d5f7 0 = Enable ROM 1 = Disable ROM */
+	int not_right_cartridge_rd4_control; /* 0=$8000-$9fff cart ROM, 1=$8000-$9fff system RAM */
+	int not_enable_2k_character_ram;
+	int not_enable_2k_attribute_ram;
+	int not_enable_crtc_registers;
+	int not_enable_80_column_output;
+	int video_bank_select;        /* bits 0-3 of d5f6, $0-$f 16 banks */
+	int crtreg[0x40];
+} AF80_state_t;
+
 typedef struct PROTO80_state_t {
 	/* TRUE to emulate a prototype 80 column board for the 1090. */
 	int enabled;
@@ -489,6 +608,22 @@ typedef struct PROTO80_state_t {
 	UBYTE *rom;
 	char rom_filename[FILENAME_MAX];
 } PROTO80_state_t;
+
+typedef struct BIT3_state_t {
+	/* TRUE to emulate the Bit3 Full View 80 column board. */
+	int enabled;
+	/* ROM/charset images (0x1000 bytes each, heap-allocated when enabled). */
+	UBYTE *rom;
+	char rom_filename[FILENAME_MAX];
+	UBYTE *charset;
+	char charset_filename[FILENAME_MAX];
+	/* 2 KB video RAM (heap-allocated when enabled). */
+	UBYTE *screen;
+	/* Register/bank state. */
+	int video_latch;
+	int rom_bank_select;          /* bits 5 and 0-2 of d508, $0-$f 16 banks */
+	UBYTE crtreg[0x40];
+} BIT3_state_t;
 
 typedef struct RTIME_state_t {
 	/* TRUE to emulate the ICD R-Time 8 cartridge. */
@@ -501,7 +636,92 @@ typedef struct RTIME_state_t {
 	UBYTE regset[16];
 } RTIME_state_t;
 
-typedef struct Input_state_t Input_state_t;
+typedef struct Voicebox_state_t {
+	/* TRUE to emulate the Alien Group Voice Box I / II. */
+	int enabled;
+	/* TRUE for Voice Box II (serial), FALSE for Voice Box I (SKCTL). */
+	int ii;
+	/* Serial-protocol decode state (Voice Box I). */
+	int prev_byte;
+	int prev_prev_byte;
+	int voice_box_byte;
+	int voice_box_bit;
+} Voicebox_state_t;
+
+typedef struct Pokeyrec_state_t {
+	int enabled;
+	int counter;
+	int interval;
+	char *filename; /* points to a literal or a Util_strdup'ed string */
+	char *fmt;      /* points to a string literal */
+	FILE *fp;
+#ifdef STEREO_SOUND
+	int stereo;
+#endif
+} Pokeyrec_state_t;
+
+struct ide_device; /* defined in ide_internal.h (IDE build only) */
+
+typedef struct IDE_state_t {
+	int enabled;
+	int debug;
+	int count; /* debug counter */
+	/* Heap-allocated device state (lazily created by IDE_PIN_CTX;
+	   the legacy module used a zero-initialised file-scope struct).
+	   Named `dev` because ide.c aliases the token `device`. */
+	struct ide_device *dev;
+} IDE_state_t;
+
+typedef struct Input_state_t {
+	/* Keyboard */
+	int key_code;   /* regular Atari key code */
+	int key_shift;  /* Shift key pressed */
+	int key_consol; /* Start, Select and Option keys (INPUT_CONSOL_*) */
+	/* Joysticks */
+	int joy_autofire[4]; /* autofire mode for each Atari port */
+	int joy_block_opposite_directions; /* can't move left and right simultaneously */
+	int joy_multijoy;  /* emulate MultiJoy4 interface */
+	/* 5200 joystick values */
+	int joy_5200_min;
+	int joy_5200_center;
+	int joy_5200_max;
+	/* Mouse */
+	int mouse_mode;      /* device emulated with mouse (INPUT_MOUSE_*) */
+	int mouse_port;      /* Atari port the emulated device is attached to */
+	int mouse_delta_x;   /* x motion since last frame */
+	int mouse_delta_y;   /* y motion since last frame */
+	int mouse_buttons;   /* buttons pressed (b0: left, b1: right, b2: middle) */
+	int mouse_speed;     /* how fast the mouse pointer moves */
+	int mouse_pot_min;   /* min. value of POKEY's POT register */
+	int mouse_pot_max;   /* max. value of POKEY's POT register */
+	int mouse_pen_ofs_h; /* light pen/gun horizontal offset (calibration) */
+	int mouse_pen_ofs_v; /* light pen/gun vertical offset (calibration) */
+	int mouse_joy_inertia; /* how long the mouse pointer can move (in Atari frames) */
+	int direct_mouse;    /* convert mouse pointer position directly into POT values */
+	/* CX85 numeric keypad */
+	int cx85;
+	/* Internal state (previously file-scope statics in input.c) */
+	int cx85_port;
+	int mouse_x;
+	int mouse_y;
+	int mouse_move_x;
+	int mouse_move_y;
+	int mouse_step_e;    /* Bresenham error term used by mouse_step() */
+	int mouse_pen_show_pointer;
+	int mouse_last_right;
+	int mouse_last_down;
+	UBYTE STICK[4];
+	UBYTE TRIG_input[4];
+	int joy_multijoy_no; /* number of selected joy */
+	int max_scanline_counter;
+	int scanline_counter;
+	int last_key_code;
+	int last_key_break;
+	UBYTE last_stick[4];
+	int last_mouse_buttons;
+	int bit5_5200;
+} Input_state_t;
+
 typedef struct Screen_state_t Screen_state_t;
 typedef struct Sound_state_t Sound_state_t;
 
@@ -530,8 +750,15 @@ typedef struct Atari800_Instance {
 	ESC_state_t esc;
 	Binload_state_t binload;
 	RTIME_state_t rtime;
+	Voicebox_state_t voicebox;
+	Pokeyrec_state_t pokeyrec;
+	IDE_state_t ide;
+	AF80_state_t af80;
+	BIT3_state_t bit3;
 	PROTO80_state_t proto80;
-	Input_state_t *input;
+	Input_state_t input;
+	XLD_state_t xld;
+	XEP80_state_t xep80;
 	Screen_state_t *screen;
 	Sound_state_t *sound;
 

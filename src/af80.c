@@ -30,26 +30,22 @@
 #include "cpu.h"
 #include <stdlib.h>
 
-static UBYTE *af80_rom = NULL;
-static char af80_rom_filename[FILENAME_MAX];
-static UBYTE *af80_charset = NULL;
-static char af80_charset_filename[FILENAME_MAX];
+/* Transitional Option C bridge: the per-instance AF80 state lives in
+   AF80_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (AF = &inst->af80, AFI = inst); the _Ctx bodies operate on
+   their own instance. AF80_palette stays a real file-scope global: it
+   is derived from the shared read-only RGBI table below and is
+   referenced from static initialisers in sdl/palette.c. */
 
-static UBYTE *af80_screen = NULL;
-static UBYTE *af80_attrib = NULL;
+static Atari800_Instance *AFI;
+static AF80_state_t *AF;
 
-int AF80_enabled = FALSE;
+#define AF80_PIN_CTX(inst) do { \
+	AFI = (inst); \
+	AF = &(inst)->af80; \
+} while (0)
 
 /* Austin Franklin information from forum posts by warerat at Atariage */
-static int rom_bank_select; /* bits 0-3 of d5f7, $0-$f 16 banks */
-static int not_rom_output_enable; /* bit 4 of d5f7 0 = Enable ROM 1 = Disable ROM */
-static int not_right_cartridge_rd4_control; /* 0=$8000-$9fff cart ROM, 1= $8000-$9fff system RAM */
-static int not_enable_2k_character_ram;
-static int not_enable_2k_attribute_ram;
-static int not_enable_crtc_registers;
-static int not_enable_80_column_output;
-static int video_bank_select; /* bits 0-3 of d5f6, $0-$f 16 banks */
-static int crtreg[0x40];
 static int const rgbi_palette[16] = {
 	0x000000, /* black */
 	0x0000AA, /* blue */
@@ -78,50 +74,51 @@ int AF80_palette[16];
 
 static void update_d6(void)
 {
-	if (!not_enable_2k_character_ram) {
-		memcpy(MEMORY_mem + 0xd600, af80_screen + (video_bank_select<<7), 0x80);
-		memcpy(MEMORY_mem + 0xd680, af80_screen + (video_bank_select<<7), 0x80);
+	if (!AF->not_enable_2k_character_ram) {
+		memcpy(AFI->memory.mem + 0xd600, AF->screen + (AF->video_bank_select<<7), 0x80);
+		memcpy(AFI->memory.mem + 0xd680, AF->screen + (AF->video_bank_select<<7), 0x80);
 	}
-	else if (!not_enable_2k_attribute_ram) {
-		memcpy(MEMORY_mem + 0xd600, af80_attrib + (video_bank_select<<7), 0x80);
-		memcpy(MEMORY_mem + 0xd680, af80_attrib + (video_bank_select<<7), 0x80);
+	else if (!AF->not_enable_2k_attribute_ram) {
+		memcpy(AFI->memory.mem + 0xd600, AF->attrib + (AF->video_bank_select<<7), 0x80);
+		memcpy(AFI->memory.mem + 0xd680, AF->attrib + (AF->video_bank_select<<7), 0x80);
 	}
-	else if (not_enable_crtc_registers) {
-		memset(MEMORY_mem + 0xd600, 0xff, 0x100);
+	else if (AF->not_enable_crtc_registers) {
+		memset(AFI->memory.mem + 0xd600, 0xff, 0x100);
 	}
 }
 
 static void update_d5(void)
 {
-	if (not_rom_output_enable) {
-		memset(MEMORY_mem + 0xd500, 0xff, 0x100);
+	if (AF->not_rom_output_enable) {
+		memset(AFI->memory.mem + 0xd500, 0xff, 0x100);
 	}
 	else {
-		memcpy(MEMORY_mem + 0xd500, af80_rom + (rom_bank_select<<8), 0x100);
+		memcpy(AFI->memory.mem + 0xd500, AF->rom + (AF->rom_bank_select<<8), 0x100);
 	}
 }
 
 static void update_8000_9fff(void)
 {
-	if (not_right_cartridge_rd4_control) return;
-	if (not_rom_output_enable) {
-		memset(MEMORY_mem + 0x8000, 0xff, 0x2000);
+	if (AF->not_right_cartridge_rd4_control) return;
+	if (AF->not_rom_output_enable) {
+		memset(AFI->memory.mem + 0x8000, 0xff, 0x2000);
 	}
 	else {
 		int i;
 		for (i=0; i<32; i++) {
-		memcpy(MEMORY_mem + 0x8000 + (i<<8), af80_rom + (rom_bank_select<<8), 0x100);
+		memcpy(AFI->memory.mem + 0x8000 + (i<<8), AF->rom + (AF->rom_bank_select<<8), 0x100);
 		}
 	}
 }
 
-int AF80_Initialise(int *argc, char *argv[])
+int AF80_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i, j;
 	int help_only = FALSE;
+	AF80_PIN_CTX(inst);
 	for (i = j = 1; i < *argc; i++) {
 		if (strcmp(argv[i], "-af80") == 0) {
-			AF80_enabled = TRUE;
+			AF->enabled = TRUE;
 		}
 		else {
 		 	if (strcmp(argv[i], "-help") == 0) {
@@ -136,34 +133,34 @@ int AF80_Initialise(int *argc, char *argv[])
 	if (help_only)
 		return TRUE;
 
-	if (AF80_enabled) {
+	if (AF->enabled) {
 		Log_print("Austin Franklin 80 enabled");
-		af80_rom = (UBYTE *)Util_malloc(0x1000);
-		if (!Atari800_LoadImage(af80_rom_filename, af80_rom, 0x1000)) {
-			free(af80_rom);
-			af80_rom = NULL;
-			AF80_enabled = FALSE;
+		AF->rom = (UBYTE *)Util_malloc(0x1000);
+		if (!Atari800_LoadImage(AF->rom_filename, AF->rom, 0x1000)) {
+			free(AF->rom);
+			AF->rom = NULL;
+			AF->enabled = FALSE;
 			Log_print("Couldn't load Austin Franklin ROM image");
 			return FALSE;
 		}
 		else {
 			Log_print("loaded Austin Franklin rom image");
 		}
-		af80_charset = (UBYTE *)Util_malloc(0x1000);
-		if (!Atari800_LoadImage(af80_charset_filename, af80_charset, 0x1000)) {
-			free(af80_charset);
-			free(af80_rom);
-			af80_charset = af80_rom = NULL;
-			AF80_enabled = FALSE;
+		AF->charset = (UBYTE *)Util_malloc(0x1000);
+		if (!Atari800_LoadImage(AF->charset_filename, AF->charset, 0x1000)) {
+			free(AF->charset);
+			free(AF->rom);
+			AF->charset = AF->rom = NULL;
+			AF->enabled = FALSE;
 			Log_print("Couldn't load Austin Franklin charset image");
 			return FALSE;
 		}
 		else {
 			Log_print("loaded Austin Franklin charset image");
 		}
-		af80_screen = (UBYTE *)Util_malloc(0x800);
-		af80_attrib = (UBYTE *)Util_malloc(0x800);
-		AF80_Reset();
+		AF->screen = (UBYTE *)Util_malloc(0x800);
+		AF->attrib = (UBYTE *)Util_malloc(0x800);
+		AF80_Reset_Ctx(inst);
 
 		/* swap palette */
 		for (i=0; i<16; i++ ) {
@@ -176,51 +173,56 @@ int AF80_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-void AF80_Exit(void)
+void AF80_Exit_Ctx(Atari800_Instance *inst)
 {
-	free(af80_screen);
-	free(af80_attrib);
-	free(af80_charset);
-	free(af80_rom);
-	af80_screen = af80_attrib = af80_charset = af80_rom = NULL;
+	AF80_PIN_CTX(inst);
+	free(AF->screen);
+	free(AF->attrib);
+	free(AF->charset);
+	free(AF->rom);
+	AF->screen = AF->attrib = AF->charset = AF->rom = NULL;
 }
 
-void AF80_InsertRightCartridge(void)
+void AF80_InsertRightCartridge_Ctx(Atari800_Instance *inst)
 {
-		MEMORY_Cart809fEnable();
+		AF80_PIN_CTX(inst);
+		MEMORY_Cart809fEnableCtx(inst);
 		update_d5();
 		update_8000_9fff();
 }
 
-int AF80_ReadConfig(char *string, char *ptr)
+int AF80_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	AF80_PIN_CTX(inst);
 	if (strcmp(string, "AF80_ROM") == 0)
-		Util_strlcpy(af80_rom_filename, ptr, sizeof(af80_rom_filename));
+		Util_strlcpy(AF->rom_filename, ptr, sizeof(AF->rom_filename));
 	else if (strcmp(string, "AF80_CHARSET") == 0)
-		Util_strlcpy(af80_charset_filename, ptr, sizeof(af80_charset_filename));
+		Util_strlcpy(AF->charset_filename, ptr, sizeof(AF->charset_filename));
 	else return FALSE; /* no match */
 	return TRUE; /* matched something */
 }
 
-void AF80_WriteConfig(FILE *fp)
+void AF80_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
-	fprintf(fp, "AF80_ROM=%s\n", af80_rom_filename);
-	fprintf(fp, "AF80_CHARSET=%s\n", af80_charset_filename);
+	AF80_PIN_CTX(inst);
+	fprintf(fp, "AF80_ROM=%s\n", AF->rom_filename);
+	fprintf(fp, "AF80_CHARSET=%s\n", AF->charset_filename);
 }
 
-int AF80_D6GetByte(UWORD addr, int no_side_effects)
+int AF80_D6GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
 	int result = 0xff;
-	if (!not_enable_2k_character_ram) {
-		result = MEMORY_dGetByte(addr);
+	AF80_PIN_CTX(inst);
+	if (!AF->not_enable_2k_character_ram) {
+		result = AFI->memory.mem[addr];
 	}
-	else if (!not_enable_2k_attribute_ram) {
-		result = MEMORY_dGetByte(addr);
+	else if (!AF->not_enable_2k_attribute_ram) {
+		result = AFI->memory.mem[addr];
 	}
-	else if (!not_enable_crtc_registers) {
-		if (video_bank_select == 0 ) {
+	else if (!AF->not_enable_crtc_registers) {
+		if (AF->video_bank_select == 0 ) {
 			if ((addr&0xff)<0x40) {
-				result = crtreg[addr&0xff];
+				result = AF->crtreg[addr&0xff];
 				if ((addr&0xff) == 0x3a) {
 					result = 0x01;
 				}
@@ -231,23 +233,24 @@ int AF80_D6GetByte(UWORD addr, int no_side_effects)
 	return result;
 }
 
-void AF80_D6PutByte(UWORD addr, UBYTE byte)
+void AF80_D6PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
-	if (!not_enable_2k_character_ram) {
-		MEMORY_dPutByte((addr&0xff7f),byte);
-		MEMORY_dPutByte((addr&0xff7f)+0x80,byte);
-		af80_screen[(addr&0x7f) + (video_bank_select<<7)] = byte;
+	AF80_PIN_CTX(inst);
+	if (!AF->not_enable_2k_character_ram) {
+		AFI->memory.mem[(addr&0xff7f)] = byte;
+		AFI->memory.mem[(addr&0xff7f)+0x80] = byte;
+		AF->screen[(addr&0x7f) + (AF->video_bank_select<<7)] = byte;
 	}
-	else if (!not_enable_2k_attribute_ram) {
-		MEMORY_dPutByte((addr&0xff7f),byte);
-		MEMORY_dPutByte((addr&0xff7f)+0x80,byte);
-		af80_attrib[(addr&0x7f) + (video_bank_select<<7)] = byte;
+	else if (!AF->not_enable_2k_attribute_ram) {
+		AFI->memory.mem[(addr&0xff7f)] = byte;
+		AFI->memory.mem[(addr&0xff7f)+0x80] = byte;
+		AF->attrib[(addr&0x7f) + (AF->video_bank_select<<7)] = byte;
 		D(printf("AF80 Write, attribute,  addr:%4x byte:%2x, cpu:%4x\n", addr, byte,CPU_remember_PC[(CPU_remember_PC_curpos-1)%CPU_REMEMBER_PC_STEPS]));
 	}
-	else if (!not_enable_crtc_registers) {
-		if (video_bank_select == 0 ) {
+	else if (!AF->not_enable_crtc_registers) {
+		if (AF->video_bank_select == 0 ) {
 			if ((addr&0xff)<0x40) {
-				crtreg[addr&0xff] = byte;
+				AF->crtreg[addr&0xff] = byte;
 			}
 			D(if (1 || (addr!=0xd618 && addr!=0xd619)) printf("AF80 Write addr:%4x byte:%2x, cpu:%4x\n", addr, byte,CPU_remember_PC[(CPU_remember_PC_curpos-1)%CPU_REMEMBER_PC_STEPS]));
 		}
@@ -257,33 +260,36 @@ void AF80_D6PutByte(UWORD addr, UBYTE byte)
 	}
 }
 
-int AF80_D5GetByte(UWORD addr, int no_side_effects)
+int AF80_D5GetByte_Ctx(Atari800_Instance *inst, UWORD addr, int no_side_effects)
 {
-	int result = MEMORY_dGetByte(addr);
+	int result;
+	AF80_PIN_CTX(inst);
+	result = AFI->memory.mem[addr];
 	return result;
 }
 
-void AF80_D5PutByte(UWORD addr, UBYTE byte)
+void AF80_D5PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 {
+	AF80_PIN_CTX(inst);
 	if (addr == 0xd5f6) {
 		int need_update_d6 = FALSE;
-		if ((byte&0x10) != not_enable_2k_character_ram) {
-			not_enable_2k_character_ram = (byte & 0x10);
+		if ((byte&0x10) != AF->not_enable_2k_character_ram) {
+			AF->not_enable_2k_character_ram = (byte & 0x10);
 			need_update_d6 = TRUE;
 		}
-		if ((byte&0x20) != not_enable_2k_attribute_ram) {
-			not_enable_2k_attribute_ram = (byte & 0x20);
+		if ((byte&0x20) != AF->not_enable_2k_attribute_ram) {
+			AF->not_enable_2k_attribute_ram = (byte & 0x20);
 			need_update_d6 = TRUE;
 		}
-		if ((byte&0x40) != not_enable_crtc_registers) {
-			not_enable_crtc_registers = (byte & 0x40);
+		if ((byte&0x40) != AF->not_enable_crtc_registers) {
+			AF->not_enable_crtc_registers = (byte & 0x40);
 			need_update_d6 = TRUE;
 		}
-		if ((byte&0x80) != not_enable_80_column_output) {
-			not_enable_80_column_output = (byte & 0x80);
+		if ((byte&0x80) != AF->not_enable_80_column_output) {
+			AF->not_enable_80_column_output = (byte & 0x80);
 		}
-		if ((byte&0x0f) != video_bank_select) {
-			video_bank_select = (byte & 0x0f);
+		if ((byte&0x0f) != AF->video_bank_select) {
+			AF->video_bank_select = (byte & 0x0f);
 			need_update_d6 = TRUE;
 		}
 		if (need_update_d6) {
@@ -293,28 +299,28 @@ void AF80_D5PutByte(UWORD addr, UBYTE byte)
 	else if (addr == 0xd5f7) {
 		int need_update_d5 = FALSE;
 		int need_update_8000_9fff = FALSE;
-		if ((byte&0x10) != not_rom_output_enable) {
-			not_rom_output_enable = (byte & 0x10);
+		if ((byte&0x10) != AF->not_rom_output_enable) {
+			AF->not_rom_output_enable = (byte & 0x10);
 			need_update_d5 = TRUE;
 			if (byte&0x20) {
 				need_update_8000_9fff = TRUE;
 			}
 		}
-		if ((byte&0x20) != not_right_cartridge_rd4_control) {
-			not_right_cartridge_rd4_control = (byte & 0x20);
-			if (not_right_cartridge_rd4_control) {
-				MEMORY_Cart809fDisable();
+		if ((byte&0x20) != AF->not_right_cartridge_rd4_control) {
+			AF->not_right_cartridge_rd4_control = (byte & 0x20);
+			if (AF->not_right_cartridge_rd4_control) {
+				MEMORY_Cart809fDisableCtx(inst);
 			}
 			else {
-				MEMORY_Cart809fEnable();
+				MEMORY_Cart809fEnableCtx(inst);
 				need_update_8000_9fff = TRUE;
 			}
 		}
-		if ((byte&0x0f) != rom_bank_select) {
-			rom_bank_select = (byte & 0x0f);
-			if (!not_rom_output_enable) {
+		if ((byte&0x0f) != AF->rom_bank_select) {
+			AF->rom_bank_select = (byte & 0x0f);
+			if (!AF->not_rom_output_enable) {
 				need_update_d5 = TRUE;
-				if (!not_right_cartridge_rd4_control) {
+				if (!AF->not_right_cartridge_rd4_control) {
 					need_update_8000_9fff = TRUE;
 				}
 			}
@@ -329,31 +335,35 @@ void AF80_D5PutByte(UWORD addr, UBYTE byte)
 	D(if (addr!=0xd5f7 && addr!=0xd5f6) printf("AF80 Write addr:%4x byte:%2x, cpu:%4x\n", addr, byte,CPU_remember_PC[(CPU_remember_PC_curpos-1)%CPU_REMEMBER_PC_STEPS]));
 }
 
-UBYTE AF80_GetPixels(int scanline, int column, int *colour, int blink)
+UBYTE AF80_GetPixels_Ctx(Atari800_Instance *inst, int scanline, int column, int *colour, int blink)
 {
 #define AF80_ROWS 25
 #define AF80_CELL_HEIGHT 10
 	UBYTE character;
 	int attrib;
 	UBYTE font_data;
-	int table_start = crtreg[0x0c] + ((crtreg[0x0d]&0x3f)<<8);
-	int row = scanline / AF80_CELL_HEIGHT;
-	int line = scanline % AF80_CELL_HEIGHT;
+	int table_start;
+	int row;
+	int line;
 	int screen_pos;
+	AF80_PIN_CTX(inst);
+	table_start = AF->crtreg[0x0c] + ((AF->crtreg[0x0d]&0x3f)<<8);
+	row = scanline / AF80_CELL_HEIGHT;
+	line = scanline % AF80_CELL_HEIGHT;
 	if (row  >= AF80_ROWS) {
 		return 0;
 	}
 
-	if (row >= crtreg[0x10]) {
-		screen_pos = (row-crtreg[0x10])*80 + column + crtreg[0x0e] + ((crtreg[0x0f]&0x3f)<<8);
+	if (row >= AF->crtreg[0x10]) {
+		screen_pos = (row-AF->crtreg[0x10])*80 + column + AF->crtreg[0x0e] + ((AF->crtreg[0x0f]&0x3f)<<8);
 	}
 	else {
 		screen_pos = row*80+column + table_start;
 	}
 	screen_pos &= 0x7ff;
-	character = af80_screen[screen_pos];
-	attrib = af80_attrib[screen_pos];
-	font_data = af80_charset[character*16 + line];
+	character = AF->screen[screen_pos];
+	attrib = AF->attrib[screen_pos];
+	font_data = AF->charset[character*16 + line];
 	if (attrib & 0x01) {
 	   	font_data ^= 0xff; /* invert */
 	}
@@ -363,26 +373,27 @@ UBYTE AF80_GetPixels(int scanline, int column, int *colour, int blink)
 	if (line+1 == AF80_CELL_HEIGHT && (attrib & 0x04)) {
 		font_data = 0xff; /* underline */
 	}
-	if (row == crtreg[0x18] && column == crtreg[0x19] && !blink) {
+	if (row == AF->crtreg[0x18] && column == AF->crtreg[0x19] && !blink) {
 		font_data = 0xff; /* cursor */
 	}
 	*colour = attrib>>4; /* set number of palette entry */
 	return font_data;
 }
 
-void AF80_Reset(void)
+void AF80_Reset_Ctx(Atari800_Instance *inst)
 {
-	memset(af80_screen, 0, 0x800);
-	memset(af80_attrib, 0, 0x800);
-	rom_bank_select = 0;
-	not_rom_output_enable = 0;
-	not_right_cartridge_rd4_control = 0;
-	not_enable_2k_character_ram = 0;
-	not_enable_2k_attribute_ram = 0;
-	not_enable_crtc_registers = 0;
-	not_enable_80_column_output = 0;
-	video_bank_select = 0;
-	memset(crtreg, 0, sizeof(crtreg));
+	AF80_PIN_CTX(inst);
+	memset(AF->screen, 0, 0x800);
+	memset(AF->attrib, 0, 0x800);
+	AF->rom_bank_select = 0;
+	AF->not_rom_output_enable = 0;
+	AF->not_right_cartridge_rd4_control = 0;
+	AF->not_enable_2k_character_ram = 0;
+	AF->not_enable_2k_attribute_ram = 0;
+	AF->not_enable_crtc_registers = 0;
+	AF->not_enable_80_column_output = 0;
+	AF->video_bank_select = 0;
+	memset(AF->crtreg, 0, sizeof(AF->crtreg));
 }
 
 /*

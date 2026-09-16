@@ -48,52 +48,127 @@
 #include <zlib.h>
 #endif
 
-int INPUT_key_code = AKEY_NONE;
-int INPUT_key_shift = 0;
-int INPUT_key_consol = INPUT_CONSOL_NONE;
-
-int INPUT_joy_autofire[4] = {INPUT_AUTOFIRE_OFF, INPUT_AUTOFIRE_OFF, INPUT_AUTOFIRE_OFF, INPUT_AUTOFIRE_OFF};
-
-int INPUT_joy_block_opposite_directions = 1;
-
-int INPUT_joy_multijoy = 0;
-
-int INPUT_joy_5200_min = 6;
-int INPUT_joy_5200_center = 114;
-int INPUT_joy_5200_max = 220;
-
-int INPUT_cx85 = 0;
-
-int INPUT_mouse_mode = INPUT_MOUSE_OFF;
-int INPUT_mouse_port = 0;
-int INPUT_mouse_delta_x = 0;
-int INPUT_mouse_delta_y = 0;
-int INPUT_mouse_buttons = 0;
-int INPUT_mouse_speed = 3;
-int INPUT_mouse_pot_min = 1;		/* min. value of POKEY's POT register */
-int INPUT_mouse_pot_max = 228;		/* max. value of POKEY's POT register */
-/* There should be UI or options for light pen/gun offsets.
-   Below are best offsets for different programs:
-   AtariGraphics: H = 0..32, V = 0 (there's calibration in the program)
-   Bug Hunt: H = 44, V = 2
-   Barnyard Blaster: H = 40, V = 0
-   Operation Blood (light gun version): H = 40, V = 4
- */
-int INPUT_mouse_pen_ofs_h = 42;
-int INPUT_mouse_pen_ofs_v = 2;
-int INPUT_mouse_joy_inertia = 10;
-int INPUT_direct_mouse = 0;
-
 #ifndef MOUSE_SHIFT
 #define MOUSE_SHIFT 4
 #endif
-static int mouse_x = 0;
-static int mouse_y = 0;
-static int mouse_move_x = 0;
-static int mouse_move_y = 0;
-static int mouse_pen_show_pointer = 0;
-static int mouse_last_right = 0;
-static int mouse_last_down = 0;
+
+/* Transitional Option C bridge: the per-instance input state lives in
+   Input_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (IN = &inst->input, INI = inst); inside this file the legacy
+   state names route through IN, so the _Ctx bodies operate on their own
+   instance. The chip/peripheral register names written by INPUT_Frame
+   (POKEY_*, GTIA_*, PIA_*, ANTIC_*, CASSETTE_press_space) are re-pointed
+   to the pinned instance as well. */
+static Atari800_Instance *INI;
+static Input_state_t *IN;
+
+#define INPUT_PIN_CTX(inst) do { \
+	INI = (inst); \
+	IN = &INI->input; \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef INPUT_key_code
+#undef INPUT_key_shift
+#undef INPUT_key_consol
+#undef INPUT_joy_autofire
+#undef INPUT_joy_block_opposite_directions
+#undef INPUT_joy_multijoy
+#undef INPUT_joy_5200_min
+#undef INPUT_joy_5200_center
+#undef INPUT_joy_5200_max
+#undef INPUT_cx85
+#undef INPUT_mouse_mode
+#undef INPUT_mouse_port
+#undef INPUT_mouse_delta_x
+#undef INPUT_mouse_delta_y
+#undef INPUT_mouse_buttons
+#undef INPUT_mouse_speed
+#undef INPUT_mouse_pot_min
+#undef INPUT_mouse_pot_max
+#undef INPUT_mouse_pen_ofs_h
+#undef INPUT_mouse_pen_ofs_v
+#undef INPUT_mouse_joy_inertia
+#undef INPUT_direct_mouse
+#define INPUT_key_code   (IN->key_code)
+#define INPUT_key_shift  (IN->key_shift)
+#define INPUT_key_consol (IN->key_consol)
+#define INPUT_joy_autofire (IN->joy_autofire)
+#define INPUT_joy_block_opposite_directions (IN->joy_block_opposite_directions)
+#define INPUT_joy_multijoy (IN->joy_multijoy)
+#define INPUT_joy_5200_min    (IN->joy_5200_min)
+#define INPUT_joy_5200_center (IN->joy_5200_center)
+#define INPUT_joy_5200_max    (IN->joy_5200_max)
+#define INPUT_cx85 (IN->cx85)
+#define INPUT_mouse_mode        (IN->mouse_mode)
+#define INPUT_mouse_port        (IN->mouse_port)
+#define INPUT_mouse_delta_x     (IN->mouse_delta_x)
+#define INPUT_mouse_delta_y     (IN->mouse_delta_y)
+#define INPUT_mouse_buttons     (IN->mouse_buttons)
+#define INPUT_mouse_speed       (IN->mouse_speed)
+#define INPUT_mouse_pot_min     (IN->mouse_pot_min)
+#define INPUT_mouse_pot_max     (IN->mouse_pot_max)
+#define INPUT_mouse_pen_ofs_h   (IN->mouse_pen_ofs_h)
+#define INPUT_mouse_pen_ofs_v   (IN->mouse_pen_ofs_v)
+#define INPUT_mouse_joy_inertia (IN->mouse_joy_inertia)
+#define INPUT_direct_mouse      (IN->direct_mouse)
+
+/* Previously file-scope/function-local statics, now per-instance. */
+#define mouse_x              (IN->mouse_x)
+#define mouse_y              (IN->mouse_y)
+#define mouse_move_x         (IN->mouse_move_x)
+#define mouse_move_y         (IN->mouse_move_y)
+#define mouse_step_e         (IN->mouse_step_e)
+#define mouse_pen_show_pointer (IN->mouse_pen_show_pointer)
+#define mouse_last_right     (IN->mouse_last_right)
+#define mouse_last_down      (IN->mouse_last_down)
+#define STICK                (IN->STICK)
+#define TRIG_input           (IN->TRIG_input)
+#define joy_multijoy_no      (IN->joy_multijoy_no)
+#define cx85_port            (IN->cx85_port)
+#define max_scanline_counter (IN->max_scanline_counter)
+#define scanline_counter     (IN->scanline_counter)
+#define last_key_code        (IN->last_key_code)
+#define last_key_break       (IN->last_key_break)
+#define last_stick           (IN->last_stick)
+#define last_mouse_buttons   (IN->last_mouse_buttons)
+#define bit5_5200            (IN->bit5_5200)
+
+/* Re-point the registers written/read by INPUT_Frame to the pinned
+   instance (the headers alias them to Atari800_default). */
+#undef POKEY_KBCODE
+#undef POKEY_IRQST
+#undef POKEY_IRQEN
+#undef POKEY_SKSTAT
+#undef POKEY_POT_input
+#undef GTIA_TRIG
+#undef PIA_PORT_input
+#undef ANTIC_PENH_input
+#undef ANTIC_PENV_input
+#undef CASSETTE_press_space
+#define POKEY_KBCODE       (INI->pokey.KBCODE)
+#define POKEY_IRQST        (INI->pokey.IRQST)
+#define POKEY_IRQEN        (INI->pokey.IRQEN)
+#define POKEY_SKSTAT       (INI->pokey.SKSTAT)
+#define POKEY_POT_input    (INI->pokey.POT_input)
+#define GTIA_TRIG          (INI->gtia.TRIG)
+#define PIA_PORT_input     (INI->pia.PORT_input)
+#define ANTIC_PENH_input   (INI->antic.PENH_input)
+#define ANTIC_PENV_input   (INI->antic.PENV_input)
+#define CASSETTE_press_space (INI->cassette.press_space)
+
+/* Route the legacy function names through the pinned context. */
+#undef INPUT_Initialise
+#undef INPUT_Exit
+#undef INPUT_Frame
+#undef INPUT_Scanline
+#undef INPUT_SelectMultiJoy
+#undef INPUT_CenterMousePointer
+#undef INPUT_DrawMousePointer
+#undef INPUT_Recording
+#undef INPUT_Playingback
+#undef INPUT_RecordInt
+#undef INPUT_PlaybackInt
 
 static const UBYTE mouse_amiga_codes[16] = {
 	0x00, 0x02, 0x0a, 0x08,
@@ -109,16 +184,6 @@ static const UBYTE mouse_st_codes[16] = {
 	0x04, 0x06, 0x07, 0x05
 };
 
-static UBYTE STICK[4];
-static UBYTE TRIG_input[4];
-
-static int joy_multijoy_no = 0;	/* number of selected joy */
-
-static int cx85_port = 1;
-
-static int max_scanline_counter;
-static int scanline_counter;
-
 #ifdef EVENT_RECORDING
 static gzFile recordfp = NULL; /*output file for input recording*/
 static gzFile playbackfp = NULL; /*input file for playback*/
@@ -133,8 +198,9 @@ static char gzbuf[GZBUFSIZE+1];
 #define EVENT_RECORDING_VERSION 1
 #endif
 
-int INPUT_Initialise(int *argc, char *argv[])
+int INPUT_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	INPUT_PIN_CTX(inst);
 	int i;
 	int j;
 
@@ -291,14 +357,15 @@ int INPUT_Initialise(int *argc, char *argv[])
 		return FALSE;
 	}
 
-	INPUT_CenterMousePointer();
+	INPUT_CenterMousePointer_Ctx(INI);
 	*argc = j;
 
 	return TRUE;
 }
 
 /* For event recording */
-void INPUT_Exit(void) {
+void INPUT_Exit_Ctx(Atari800_Instance *inst) {
+	INPUT_PIN_CTX(inst);
 #ifdef EVENT_RECORDING
 	if (recording) {
 		gzclose(recordfp);
@@ -337,7 +404,6 @@ void INPUT_Exit(void) {
 */
 static UBYTE mouse_step(void)
 {
-	static int e = 0;
 	UBYTE r = INPUT_STICK_CENTRE;
 	int dx = mouse_move_x >= 0 ? mouse_move_x : -mouse_move_x;
 	int dy = mouse_move_y >= 0 ? mouse_move_y : -mouse_move_y;
@@ -360,9 +426,9 @@ static UBYTE mouse_step(void)
 			if (mouse_move_x < 0)
 				mouse_move_x = 0;
 		}
-		e -= dy;
-		if (e < 0) {
-			e += dx;
+		mouse_step_e -= dy;
+		if (mouse_step_e < 0) {
+			mouse_step_e += dx;
 			if (mouse_move_y < 0) {
 				r &= INPUT_STICK_FORWARD;
 				mouse_last_down = 0;
@@ -398,9 +464,9 @@ static UBYTE mouse_step(void)
 			if (mouse_move_y < 0)
 				mouse_move_y = 0;
 		}
-		e -= dx;
-		if (e < 0) {
-			e += dy;
+		mouse_step_e -= dx;
+		if (mouse_step_e < 0) {
+			mouse_step_e += dy;
 			if (mouse_move_x < 0) {
 				r &= INPUT_STICK_LEFT;
 				mouse_last_right = 0;
@@ -422,13 +488,10 @@ static UBYTE mouse_step(void)
 	return r;
 }
 
-void INPUT_Frame(void)
+void INPUT_Frame_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 	int i;
-	static int last_key_code = AKEY_NONE;
-	static int last_key_break = 0;
-	static UBYTE last_stick[4] = {INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE};
-	static int last_mouse_buttons = 0;
 
 	scanline_counter = 10000;	/* do nothing in INPUT_Scanline() */
 
@@ -505,7 +568,6 @@ void INPUT_Frame(void)
 		/* Bit 5 is different for each keypress because it is one
 		 * of the missing lines. */
 		if (Atari800_machine_type == Atari800_MACHINE_5200) {
-			static int bit5_5200 = 0;
 			if (bit5_5200) {
 				INPUT_key_code &= ~0x20;
 			}
@@ -926,8 +988,9 @@ static unsigned int compute_adler32_of_screen(void)
 }
 #endif /* EVENT_RECORDING */
 
-int INPUT_Recording(void)
+int INPUT_Recording_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 #ifdef EVENT_RECORDING
 	return recording;
 #else
@@ -935,8 +998,9 @@ int INPUT_Recording(void)
 #endif
 }
 
-int INPUT_Playingback(void)
+int INPUT_Playingback_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 #ifdef EVENT_RECORDING
 	return playingback;
 #else
@@ -944,15 +1008,17 @@ int INPUT_Playingback(void)
 #endif
 }
 
-void INPUT_RecordInt(int i)
+void INPUT_RecordInt_Ctx(Atari800_Instance *inst, int i)
 {
+	INPUT_PIN_CTX(inst);
 #ifdef EVENT_RECORDING
 	if (recording) gzprintf(recordfp, "%d\n", i);
 #endif
 }
 
-int INPUT_PlaybackInt(void)
+int INPUT_PlaybackInt_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 	int i = 0;
 #ifdef EVENT_RECORDING
 	if (playingback) {
@@ -963,8 +1029,9 @@ int INPUT_PlaybackInt(void)
 	return i;
 }
 
-void INPUT_Scanline(void)
+void INPUT_Scanline_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 	if (--scanline_counter == 0) {
 		mouse_step();
 		if (INPUT_mouse_mode == INPUT_MOUSE_TRAK) {
@@ -983,8 +1050,9 @@ void INPUT_Scanline(void)
 	}
 }
 
-void INPUT_SelectMultiJoy(int no)
+void INPUT_SelectMultiJoy_Ctx(Atari800_Instance *inst, int no)
 {
+	INPUT_PIN_CTX(inst);
 	no &= 3;
 	joy_multijoy_no = no;
 	if (INPUT_joy_multijoy && Atari800_machine_type != Atari800_MACHINE_5200) {
@@ -993,8 +1061,9 @@ void INPUT_SelectMultiJoy(int no)
 	}
 }
 
-void INPUT_CenterMousePointer(void)
+void INPUT_CenterMousePointer_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 	switch (INPUT_mouse_mode) {
 	case INPUT_MOUSE_PAD:
 	case INPUT_MOUSE_TOUCH:
@@ -1025,8 +1094,9 @@ void INPUT_CenterMousePointer(void)
 						} while (0)
 
 /* draw light pen cursor */
-void INPUT_DrawMousePointer(void)
+void INPUT_DrawMousePointer_Ctx(Atari800_Instance *inst)
 {
+	INPUT_PIN_CTX(inst);
 	if ((INPUT_mouse_mode == INPUT_MOUSE_PEN || INPUT_mouse_mode == INPUT_MOUSE_GUN) && mouse_pen_show_pointer) {
 		int x = mouse_x >> MOUSE_SHIFT;
 		int y = mouse_y >> MOUSE_SHIFT;

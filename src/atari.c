@@ -229,6 +229,32 @@ static Atari800_Instance default_instance_storage = {
 	.rtime = {
 		.enabled = 1,
 	},
+	/* Input: preserve the old file-scope static initialisers. */
+	.input = {
+		.key_code = AKEY_NONE,
+		.key_consol = INPUT_CONSOL_NONE,
+		.joy_block_opposite_directions = 1,
+		.joy_5200_min = 6,
+		.joy_5200_center = 114,
+		.joy_5200_max = 220,
+		.mouse_speed = 3,
+		.mouse_pot_min = 1,
+		.mouse_pot_max = 228,
+		.mouse_pen_ofs_h = 42,
+		.mouse_pen_ofs_v = 2,
+		.mouse_joy_inertia = 10,
+		.last_stick = {INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE},
+	},
+	/* XEP80: preserve the old file-scope static initialisers. */
+	.xep80 = {
+		.char_height = XEP80_CHAR_HEIGHT_NTSC,
+		.scrn_height = XEP80_HEIGHT * XEP80_CHAR_HEIGHT_NTSC,
+		.rmargin = 0x4f,
+		.screen_output = TRUE,
+		.attrib_a = 0xff,
+		.attrib_b = 0xff,
+		.cursor_on = TRUE,
+	},
 	.devices = {
 		.enable_h_patch = TRUE,
 		.enable_p_patch = TRUE,

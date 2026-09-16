@@ -30,11 +30,27 @@
 #include <string.h>
 #include <stdio.h>
 
-static int enabled, counter, interval;
-static char *filename = "pokeyrec.dat", *fmt = "%c";
-static FILE *fp;
+/* Transitional Option C bridge: the per-instance Pokeyrec state lives in
+   Pokeyrec_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (RECC = &inst->pokeyrec); inside this file the legacy state names
+   route through RECC, so the _Ctx bodies operate on their own instance. */
+static Pokeyrec_state_t *RECC;
+
+#define POKEYREC_PIN_CTX(inst) do { \
+	RECC = &(inst)->pokeyrec; \
+} while (0)
+
+/* Route the legacy state names through the pinned context.
+   Non-zero defaults match the old static initialisers; they are set in
+   POKEYREC_Initialise_Ctx (the instance state itself is zero-initialised). */
+#define enabled  (RECC->enabled)
+#define counter  (RECC->counter)
+#define interval (RECC->interval)
+#define filename (RECC->filename)
+#define fmt      (RECC->fmt)
+#define fp       (RECC->fp)
 #ifdef STEREO_SOUND
-static int stereo;
+#define stereo   (RECC->stereo)
 #endif
 
 static void output_pokey_values(int pokeynr) {
@@ -46,7 +62,8 @@ static void output_pokey_values(int pokeynr) {
     fprintf(fp, fmt, POKEY_AUDCTL[pokeynr]);
 }
 
-void POKEYREC_Recorder(void) {
+void POKEYREC_Recorder_Ctx(Atari800_Instance *inst) {
+    POKEYREC_PIN_CTX(inst);
     if (!enabled) return;
 
     if (++counter == interval) {
@@ -60,9 +77,12 @@ void POKEYREC_Recorder(void) {
     }
 }
 
-int POKEYREC_Initialise(int *argc, char *argv[]) {
+int POKEYREC_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]) {
     int i, j;
 
+    POKEYREC_PIN_CTX(inst);
+    if (!filename) filename = "pokeyrec.dat";
+    if (!fmt) fmt = "%c";
     interval = Atari800_tv_mode;
 
     for (i = j = 1; i < *argc; i++) {
@@ -124,6 +144,7 @@ missing_argument:
     return FALSE;
 }
 
-void POKEYREC_Exit(void) {
+void POKEYREC_Exit_Ctx(Atari800_Instance *inst) {
+    POKEYREC_PIN_CTX(inst);
     if (fp) fclose(fp);
 }

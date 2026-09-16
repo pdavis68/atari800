@@ -30,11 +30,29 @@
 #include "log.h"
 #include "pia.h"
 
-int VOICEBOX_enabled = FALSE;
-int VOICEBOX_ii = FALSE;
+/* Transitional Option C bridge: the per-instance Voicebox state lives in
+   Voicebox_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (VB = &inst->voicebox); inside this file the legacy state names
+   route through VB, so the _Ctx bodies operate on their own instance. */
+static Voicebox_state_t *VB;
 
-int VOICEBOX_Initialise(int *argc, char *argv[])
+#define VOICEBOX_PIN_CTX(inst) do { \
+	VB = &(inst)->voicebox; \
+} while (0)
+
+/* Route the legacy state names through the pinned context. */
+#undef VOICEBOX_enabled
+#undef VOICEBOX_ii
+#define VOICEBOX_enabled  (VB->enabled)
+#define VOICEBOX_ii       (VB->ii)
+#define prev_byte         (VB->prev_byte)
+#define prev_prev_byte    (VB->prev_prev_byte)
+#define voice_box_byte    (VB->voice_box_byte)
+#define voice_box_bit     (VB->voice_box_bit)
+
+int VOICEBOX_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	VOICEBOX_PIN_CTX(inst);
 	int i, j;
 	for (i = j = 1; i < *argc; i++) {
 		if (strcmp(argv[i], "-voicebox") == 0) {
@@ -61,12 +79,9 @@ int VOICEBOX_Initialise(int *argc, char *argv[])
 }
 
 /* For Voice Box I */
-void VOICEBOX_SKCTLPutByte(int byte)
+void VOICEBOX_SKCTLPutByte_Ctx(Atari800_Instance *inst, int byte)
 {
-	static int prev_byte;
-	static int prev_prev_byte;
-	static int voice_box_byte;
-	static int voice_box_bit;
+	VOICEBOX_PIN_CTX(inst);
 	if (!VOICEBOX_enabled || VOICEBOX_ii) return;
 	if (PIA_PACTL&0x08) return; /* Cassette motor line must be on */
 #ifdef DEBUG_VOICEBOX
@@ -91,8 +106,9 @@ void VOICEBOX_SKCTLPutByte(int byte)
 }
 
 /* For Voice Box II */
-void VOICEBOX_SEROUTPutByte(int byte)
+void VOICEBOX_SEROUTPutByte_Ctx(Atari800_Instance *inst, int byte)
 {
+	VOICEBOX_PIN_CTX(inst);
 	if (!VOICEBOX_enabled || !VOICEBOX_ii) return;
 	if (PIA_PACTL&0x08) return; /* Cassette motor line must be on */
 	if ((POKEY_SKCTL & 0x70) == 0x60 ) {

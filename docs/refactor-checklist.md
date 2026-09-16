@@ -282,8 +282,8 @@ refactor. It is the working companion to
 ## Phase 3 — Peripheral modules
 
 > **Status: in progress.** SIO, Devices, Cartridge, Cassette, PBI, the
-> PBI SCSI/Black Box/MIO sub-modules, the ESC/Binload handlers, and RTIME
-> done (2026-09-15). All of them now expose
+> PBI SCSI/Black Box/MIO sub-modules, the ESC/Binload handlers, RTIME, and
+> Input (§3.9) done (2026-09-15). All of them now expose
 > `*_Ctx(Atari800_Instance *inst, ...)` entry points with legacy-name
 > forwarding macros in their headers. Verified with the Acid800 suite
 > (`-atari test/acid800.atr -acid800 test/acid800.expected`): results
@@ -472,7 +472,7 @@ refactor. It is the working companion to
 
 ### 3.6 PBI sub-modules
 
-> **Status:** SCSI, Black Box, MIO, and PROTO80 done (2026-09-15). `PBI_SCSI_*` now
+> **Status:** SCSI, Black Box, MIO, PROTO80, and XLD done (2026-09-15). `PBI_SCSI_*` now
 > exposes `*_Ctx(Atari800_Instance *inst, ...)` entry points (SCSI state lives
 > in `SCSI_state_t`), and BB/MIO route their SCSI access through *their own*
 > instance (`inst->scsi`), so the SCSI bus is fully per-instance. BB and MIO
@@ -578,8 +578,44 @@ refactor. It is the working companion to
       instance), so the module is per-instance end-to-end; only the
       transitional dispatch (pbi.c, sdl/video.c) still pins the default
       instance.
-- [ ] **PBI_XLD** — [`src/pbi_xld.h`](src/pbi_xld.h): all `PBI_XLD_*` functions
-      and state.
+- [x] **PBI_XLD** — [`src/pbi_xld.h`](src/pbi_xld.h),
+      [`src/pbi_xld.c`](src/pbi_xld.c): `PBI_XLD_Initialise`, `PBI_XLD_Exit`,
+      `PBI_XLD_ReadConfig`, `PBI_XLD_WriteConfig`, `PBI_XLD_Reset`,
+      `PBI_XLD_D1GetByte`, `PBI_XLD_D1ffGetByte`, `PBI_XLD_D1PutByte`,
+      `PBI_XLD_D1ffPutByte`, `PBI_XLD_StateSave`, `PBI_XLD_StateRead`,
+      `PBI_XLD_votrax_busy_callback`; state `PBI_XLD_enabled`,
+      `PBI_XLD_v_enabled`.
+      Done 2026-09-15: each is now `PBI_XLD_*_Ctx(Atari800_Instance *inst, ...)`
+      in `pbi_xld.c`, pinning the file-scope context (`X = &inst->xld`,
+      `Xi = inst`) via `PBI_XLD_PIN_CTX(inst)`; the state aliases inside
+      `pbi_xld.c` route through `X`. In `pbi_xld.h` the legacy names are
+      forwarding macros passing `Atari800_default`. The D1/D1ff Get/PutByte
+      functions are dispatched from the `MEMORY_HwGetByte`/`MEMORY_HwPutByte`
+      switch statements in `pbi.c` (transitional: default instance), and
+      `votraxsnd.c`'s `PBI_XLD_votrax_busy_callback` call likewise goes
+      through the forwarding macro. The internal `PIO_PutByte`/`PIO_GetByte`/
+      `PIO_Command_Frame`/`WriteSectorBack` helpers operate on `X` directly;
+      their SIO calls (`SIO_ReadSector`, `SIO_last_op`, ...) go through the
+      forwarding macros (transitional: default instance). The never-defined
+      sound-hook declarations (`PBI_XLD_VInit`/`VFrame`/`VProcess`) were kept
+      as-is. Build passes; 20 s no-disk smoke run clean (no CIM).
+- [x] Move state (PBI_XLD): `PBI_XLD_enabled`, `PBI_XLD_v_enabled` plus the
+      previously file-scope `voicerom`/`diskrom` heap buffers,
+      `xld_d_rom_filename`/`xld_v_rom_filename`, `xld_d_enabled`,
+      `votrax_latch`, `modem_latch`, and the PIO transfer state
+      (`CommandFrame[6]`, `CommandIndex`, `DataBuffer[256+3]`, `DataIndex`,
+      `TransferStatus`, `ExpectedBytes`).
+      Done 2026-09-15: `XLD_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.xld`); `pbi_xld.c`/`pbi_xld.h` alias
+      `PBI_XLD_enabled`/`PBI_XLD_v_enabled` to
+      `Atari800_default->xld.*`. Defaults (all FALSE, empty filenames,
+      latches 0) match the old static initialisers via zero-init; the ROM
+      buffers stay heap pointers filled by `init_xld_v`/`init_xld_d`.
+      `_Ctx` bodies touch `Xi->pbi.IRQ`, `Xi->pbi.D6D7ram` and
+      `Xi->memory.mem` directly (their own instance), so the module is
+      per-instance end-to-end; only the transitional dispatch (pbi.c,
+      votraxsnd.c, statesav.c) still pins the default instance.
 
 ### 3.7 Other peripherals
 
@@ -601,29 +637,193 @@ refactor. It is the working companion to
       the default-instance initializer in `atari.c`. Build passes;
       Acid800 results identical to pre-refactor baseline; 20 s smoke run
       clean.
-- [ ] **XEP80** — [`src/xep80.h`](src/xep80.h): `XEP80_SetEnabled`, `XEP80_GetBit`,
-      `XEP80_PutBit`, `XEP80_ChangeColors`, `XEP80_StateSave`, `XEP80_StateRead`,
-      `XEP80_Initialise`; state `XEP80_enabled`, `XEP80_port`, `XEP80_scrn_height`,
-      `XEP80_char_height`, `XEP80_screen_1[]`, `XEP80_screen_2[]`.
-- [ ] **AF80** — [`src/af80.h`](src/af80.h): `AF80_Initialise`, `AF80_Exit`,
+> **Status:** RTIME, XEP80, AF80, BIT3, IDE, Voicebox, and Pokeyrec done
+> (2026-09-15). Votrax deferred (see below); Rdevice remains.
+
+- [x] **XEP80** — [`src/xep80.h`](src/xep80.h), [`src/xep80.c`](src/xep80.c):
+      `XEP80_SetEnabled`, `XEP80_GetBit`, `XEP80_PutBit`, `XEP80_ChangeColors`,
+      `XEP80_StateSave`, `XEP80_StateRead`, `XEP80_Initialise` (also
+      `XEP80_ReadConfig`/`XEP80_WriteConfig`); state `XEP80_enabled`,
+      `XEP80_port`, `XEP80_scrn_height`, `XEP80_char_height`,
+      `XEP80_screen_1[]`, `XEP80_screen_2[]`.
+      Done 2026-09-15: each is now `XEP80_*_Ctx(Atari800_Instance *inst, ...)`
+      in `xep80.c`, pinning the file-scope context (`XE = &inst->xep80`,
+      `XEI = inst`) via `XEP80_PIN_CTX(inst)`. All the previously file-scope
+      statics (~45 variables: serial-protocol state, internal NS405 RAM
+      registers, attribute latches, cursor/TV state, video_ram, and the two
+      display buffers) are macros re-pointed to `XE->...` inside `xep80.c`,
+      so the ~1900 lines of unchanged rendering/protocol bodies operate on
+      their own instance. In `xep80.h` the legacy names are forwarding
+      macros/aliases passing `Atari800_default` (pia.c, ui.c, videomode.c,
+      cfg.c, atari.c, statesav.c, sdl/video_sw.c, sdl/video_gl.c are
+      transitional). Note: the `xpos`/`ypos` state macros collide with the
+      field-name tokens inside `antic.h`'s `ANTIC_xpos`/`ANTIC_ypos`
+      expansions; fixed by re-routing those two to `static inline` helpers
+      defined before the colliding macros (`XEP80_antic_xpos/ypos`).
+      The shared `font` pointer (loaded by `XEP80_FONTS_InitFonts`,
+      read-only afterwards) stays file-scope. `XEP80_Initialise_Ctx` and
+      `XEP80_StateRead_Ctx` call `XEP80_SetEnabled_Ctx` with their own
+      instance. Build passes; 20 s no-disk smoke run clean (no CIM).
+- [x] Move state (XEP80): everything listed above plus the previously
+      file-scope statics (`output_word`, `input_queue`, `input_count`,
+      `start_trans_cpu_clock`, `receiving`, `ypos`, `xpos`, `last_char`,
+      `lmargin`, `rmargin`, `xscroll`, `line_pointers[]`, `old_ypos`,
+      `old_xpos`, `list_mode`, `escape_mode`, `burst_mode`, `screen_output`,
+      `attrib_a/b` + font_a/b_* latches, `cursor_on`, `graphics_mode`,
+      `pal_mode`, `blink_reverse`, `cursor_blink`, `cursor_overwrite`,
+      `inverse_mode`, `char_set`, `cursor_x/y`, `curs`, `video_ram[0x2000]`,
+      `charset_filename`).
+      Done 2026-09-15: `XEP80_state_t` defined in
+      [`src/instance.h`](src/instance.h) (the XEP80 geometry defines moved
+      there from `xep80.h` so the display buffers can be embedded by value)
+      and **embedded by value** in `Atari800_Instance` (`.xep80`).
+      Non-zero defaults preserved in the `atari.c` initializer
+      (`char_height = XEP80_CHAR_HEIGHT_NTSC`, `scrn_height = 250`,
+      `rmargin = 0x4f`, `screen_output = TRUE`, `attrib_a/b = 0xff`,
+      `cursor_on = TRUE`); the rest match the old static initialisers via
+      zero-init.
+- [x] **AF80** — [`src/af80.h`](src/af80.h): `AF80_Initialise`, `AF80_Exit`,
       `AF80_InsertRightCartridge`, `AF80_D5GetByte`, `AF80_D5PutByte`,
-      `AF80_D6GetByte`, `AF80_D6PutByte`, `AF80_GetPixels`, `AF80_Reset`; state
-      `AF80_enabled`, `AF80_palette[16]`.
-- [ ] **BIT3** — [`src/bit3.h`](src/bit3.h): `BIT3_Initialise`, `BIT3_Exit`,
+      `AF80_D6GetByte`, `AF80_D6PutByte`, `AF80_GetPixels`, `AF80_Reset` (also
+      `AF80_ReadConfig`/`AF80_WriteConfig`); state `AF80_enabled`,
+      `AF80_palette[16]`.
+      Done 2026-09-15: each is now `AF80_*_Ctx(Atari800_Instance *inst, ...)`
+      in `af80.c`, pinning the file-scope context (`AF = &inst->af80`,
+      `AFI = inst`) via `AF80_PIN_CTX(inst)`; the state aliases inside
+      `af80.c` route through `AF`. In `af80.h` the legacy names are
+      forwarding macros passing `Atari800_default`. The D5/D6 Get/PutByte
+      functions are dispatched from `cartridge.c` (D5) and `pbi.c` (D6)
+      via the forwarding macros — transitional: default instance; they
+      will be re-routed per-instance when those dispatchers pass their own
+      instance. `_Ctx` bodies touch `AFI->memory.mem` directly and call
+      `MEMORY_Cart809fEnableCtx/DisableCtx(inst)` (own instance), so the
+      module is per-instance end-to-end. Exception: `AF80_palette[16]`
+      stays a real file-scope global (it is derived from the shared
+      read-only `rgbi_palette` table and referenced from a static
+      initialiser in `sdl/palette.c`, which cannot dereference
+      `Atari800_default`); treated as shared/transitional. The
+      AF80_DEBUG `D()` prints still read `CPU_remember_PC` via the
+      default-instance aliases in `cpu.h` (debug-only, transitional).
+      Build passes; 20 s no-disk smoke run clean (no CIM); Acid800
+      results identical to pre-refactor baseline.
+- [x] Move state (AF80): `AF80_enabled` plus the previously file-scope
+      statics (`af80_rom`, `af80_rom_filename`, `af80_charset`,
+      `af80_charset_filename`, `af80_screen`, `af80_attrib`,
+      `rom_bank_select`, `not_rom_output_enable`,
+      `not_right_cartridge_rd4_control`, `not_enable_2k_character_ram`,
+      `not_enable_2k_attribute_ram`, `not_enable_crtc_registers`,
+      `not_enable_80_column_output`, `video_bank_select`, `crtreg[0x40]`).
+      Done 2026-09-15: `AF80_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.af80`); `af80.c`/`af80.h` alias `AF80_enabled`
+      to `Atari800_default->af80.enabled`. Defaults (all FALSE/0, NULL
+      buffers) match the old static initialisers via zero-init; the
+      ROM/charset/screen/attrib buffers stay heap pointers filled by
+      `AF80_Initialise_Ctx`. The shared `rgbi_palette` table and
+      `AF80_palette` stay file-scope in `af80.c`.
+- [x] **BIT3** — [`src/bit3.h`](src/bit3.h): `BIT3_Initialise`, `BIT3_Exit`,
       `BIT3_InsertRightCartridge`, `BIT3_D5GetByte`, `BIT3_D5PutByte`,
-      `BIT3_D6GetByte`, `BIT3_D6PutByte`, `BIT3_GetPixels`, `BIT3_Reset`; state
-      `BIT3_enabled`, `BIT3_palette[2]`.
-- [ ] **IDE** — [`src/ide.h`](src/ide.h): `IDE_Initialise`, `IDE_Exit`,
+      `BIT3_D6GetByte`, `BIT3_D6PutByte`, `BIT3_GetPixels`, `BIT3_Reset` (also
+      `BIT3_ReadConfig`/`BIT3_WriteConfig`); state `BIT3_enabled`,
+      `BIT3_palette[2]`.
+      Done 2026-09-15: each is now `BIT3_*_Ctx(Atari800_Instance *inst, ...)`
+      in `bit3.c`, pinning the file-scope context (`B3 = &inst->bit3`,
+      `B3i = inst`) via `BIT3_PIN_CTX(inst)`; the state aliases inside
+      `bit3.c` route through `B3`. In `bit3.h` the legacy names are
+      forwarding macros passing `Atari800_default`. The D5 handlers are
+      dispatched from `cartridge.c` and the D6 handlers from `pbi.c` via
+      the forwarding macros — transitional: default instance; they will
+      be re-routed per-instance when those dispatchers pass their own
+      instance. `_Ctx` bodies touch `B3i->memory.mem` directly (own
+      instance). Exceptions: `BIT3_palette[2]` stays a real file-scope
+      global (referenced from a static initialiser in `sdl/palette.c`,
+      which cannot dereference `Atari800_default`); `BIT3_Reset_Ctx`'s
+      `VIDEOMODE_Set80Column` call and `BIT3_Initialise_Ctx`'s
+      `VIDEOMODE_80_column` store remain process-global (videomode is a
+      Phase 4 module, transitional). Note: `BIT3_InsertRightCartridge`
+      was declared in `bit3.h` but never defined or called; a
+      `BIT3_InsertRightCartridge_Ctx` stub was added for symmetry.
+      Build passes; 20 s no-disk smoke run clean (no CIM); Acid800
+      results identical to pre-refactor baseline.
+- [x] Move state (BIT3): `BIT3_enabled` plus the previously file-scope
+      statics (`bit3_rom`, `bit3_rom_filename`, `bit3_charset`,
+      `bit3_charset_filename`, `bit3_screen`, `video_latch`,
+      `rom_bank_select`, `crtreg[0x40]`).
+      Done 2026-09-15: `BIT3_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.bit3`); `bit3.c`/`bit3.h` alias `BIT3_enabled`
+      to `Atari800_default->bit3.enabled`. Defaults (all FALSE/0, NULL
+      buffers) match the old static initialisers via zero-init; the
+      ROM/charset/screen buffers stay heap pointers filled by
+      `BIT3_Initialise_Ctx`. The shared `BIT3_palette` stays file-scope
+      in `bit3.c`.
+- [x] **IDE** — [`src/ide.h`](src/ide.h): `IDE_Initialise`, `IDE_Exit`,
       `IDE_GetByte`, `IDE_PutByte`; state `IDE_enabled` and IDE disk state.
-- [ ] **Voicebox** — [`src/voicebox.h`](src/voicebox.h): `VOICEBOX_Initialise`,
+      Done 2026-09-15: each is now `IDE_*_Ctx(Atari800_Instance *inst, ...)`
+      in `ide.c`, pinning the file-scope context (`IDEs = &inst->ide`,
+      `IDEi = inst`) via `IDE_PIN_CTX(inst)`; the state aliases inside
+      `ide.c` route through `IDEs` (`IDE_enabled`, `IDE_debug`, `count`,
+      and `device`). In `ide.h` the legacy names are forwarding macros
+      passing `Atari800_default`; `cartridge.c`'s D5 dispatch and `atari.c`
+      go through the forwarding macros (transitional). The legacy
+      zero-initialised file-scope `struct ide_device` became a lazily
+      allocated, zeroed heap buffer (`IDE_state_t.dev`, named `dev` because
+      ide.c aliases the token `device`); `IDE_Exit_Ctx` frees it. Build
+      passes; Acid800 results identical to pre-refactor baseline.
+- [x] Move state (IDE): `IDE_enabled`, `IDE_debug`, the debug `count`
+      counter, and the `struct ide_device` device state.
+      Done 2026-09-15: `IDE_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.ide`); defaults (all zero) match the old
+      static initialisers via zero-init.
+- [x] **Voicebox** — [`src/voicebox.h`](src/voicebox.h): `VOICEBOX_Initialise`,
       `VOICEBOX_SKCTLPutByte`, `VOICEBOX_SEROUTPutByte`; state `VOICEBOX_enabled`,
       `VOICEBOX_ii`.
+      Done 2026-09-15: each is now
+      `VOICEBOX_*_Ctx(Atari800_Instance *inst, ...)` in `voicebox.c`,
+      pinning the file-scope context (`VB = &inst->voicebox`) via
+      `VOICEBOX_PIN_CTX(inst)`; the state aliases inside `voicebox.c`
+      route through `VB`. In `voicebox.h` the legacy names are forwarding
+      macros passing `Atari800_default`. `pokey.c`'s SKCTL/SEROUT hooks and
+      `atari.c` go through the forwarding macros (transitional). The
+      function-local `static`s in `VOICEBOX_SKCTLPutByte` (`prev_byte`,
+      `prev_prev_byte`, `voice_box_byte`, `voice_box_bit`) moved into
+      `Voicebox_state_t`. Build passes; Acid800 results identical to
+      pre-refactor baseline.
+- [x] Move state (Voicebox): `VOICEBOX_enabled`, `VOICEBOX_ii` plus the
+      serial-decode statics listed above.
+      Done 2026-09-15: `Voicebox_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.voicebox`); defaults (all FALSE/0) match the
+      old static initialisers via zero-init.
 - [ ] **Votrax** — [`src/votraxsnd.h`](src/votraxsnd.h): all `VOTRAXSND_*`
-      functions and state.
-- [ ] **Pokeyrec** — [`src/pokeyrec.h`](src/pokeyrec.h): `POKEYREC_Recorder`,
+      functions and state. **Deferred to Phase 4 (sound):** `votraxsnd.c`
+      is tightly coupled to the sound subsystem (`POKEYSND_volume`, the
+      mixing buffers, `num_pokeys`, `POKEYSND_Init` call ordering) and to
+      the shared `Votrax_*` synth in `votrax.c`; converting it before the
+      Sound module would produce a misleading per-instance split. Revisit
+      together with Sound/Pokeysnd (§4.3).
+- [x] **Pokeyrec** — [`src/pokeyrec.h`](src/pokeyrec.h): `POKEYREC_Recorder`,
       `POKEYREC_Initialise`, `POKEYREC_Exit`.
+      Done 2026-09-15: each is now
+      `POKEYREC_*_Ctx(Atari800_Instance *inst, ...)` in `pokeyrec.c`,
+      pinning the file-scope context (`RECC = &inst->pokeyrec`) via
+      `POKEYREC_PIN_CTX(inst)`; the state aliases inside `pokeyrec.c`
+      route through `RECC`. In `pokeyrec.h` the legacy names are
+      forwarding macros passing `Atari800_default`. `pokeysnd.c`'s
+      `POKEYREC_Recorder` call and `atari.c`'s Initialise/Exit go through
+      the forwarding macros (transitional). The old static defaults
+      (`filename = "pokeyrec.dat"`, `fmt = "%c"`) are applied at the top
+      of `POKEYREC_Initialise_Ctx` (the instance state is
+      zero-initialised). Build passes; Acid800 results identical to
+      pre-refactor baseline.
+- [x] Move state (Pokeyrec): `enabled`, `counter`, `interval`, `filename`,
+      `fmt`, `fp` (and `stereo` under STEREO_SOUND).
+      Done 2026-09-15: `Pokeyrec_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.pokeyrec`).
 - [ ] **Rdevice** — [`src/rdevice.h`](src/rdevice.h): all `RDevice_*` functions
-      and state.
+      and state. (Remaining; ~1500-line module, next pass.)
 
 ### 3.8 ESC / Binload handlers
 
@@ -678,16 +878,56 @@ refactor. It is the working companion to
 
 ### 3.9 Input — [`src/input.h`](src/input.h), [`src/input.c`](src/input.c)
 
-- [ ] Convert: `INPUT_Initialise`, `INPUT_Exit`, `INPUT_Frame`, `INPUT_Scanline`,
+- [x] Convert: `INPUT_Initialise`, `INPUT_Exit`, `INPUT_Frame`, `INPUT_Scanline`,
       `INPUT_SelectMultiJoy`, `INPUT_CenterMousePointer`, `INPUT_DrawMousePointer`,
       `INPUT_Recording`, `INPUT_Playingback`, `INPUT_RecordInt`, `INPUT_PlaybackInt`.
-- [ ] Move state: `INPUT_key_code`, `INPUT_key_shift`, `INPUT_key_consol`,
+      Done 2026-09-15: each is now `INPUT_*_Ctx(Atari800_Instance *inst, ...)`
+      in `input.c`, pinning the file-scope context (`IN = &inst->input`,
+      `INI = inst`) via `INPUT_PIN_CTX(inst)`; all state aliases inside
+      `input.c` route through `IN`. The registers written/read by
+      `INPUT_Frame_Ctx` (`POKEY_KBCODE/IRQST/IRQEN/SKSTAT/POT_input`,
+      `GTIA_TRIG`, `PIA_PORT_input`, `ANTIC_PENH_input/PENV_input`,
+      `CASSETTE_press_space`) are `#undef`'d and re-pointed to `INI->...`
+      inside `input.c`, so the module is per-instance end-to-end for those.
+      In `input.h` the legacy names are forwarding macros passing
+      `Atari800_default`. Transitional (still default-instance via header
+      aliases in `input.c`): `CPU_GenerateIRQ` (cpu.h macro over the default
+      `CPU_IRQ`), and the top-level config reads
+      (`Atari800_machine_type`, `Atari800_nframes`, `Atari800_tv_mode`,
+      `Atari800_keyboard_detached`). The EVENT_RECORDING statics
+      (`recordfp`, `playbackfp`, `recording`, `playingback`,
+      `playingback_exit_after`, `recording_version`, `gzbuf`) remain
+      file-scope (EVENT_RECORDING is a non-default build option; move them
+      with a future pass if that build is needed per-instance). Build
+      passes; Acid800 results identical to pre-refactor baseline; 25 s
+      no-disk smoke run clean.
+- [x] Move state: `INPUT_key_code`, `INPUT_key_shift`, `INPUT_key_consol`,
       `INPUT_joy_autofire[4]`, `INPUT_joy_block_opposite_directions`,
       `INPUT_joy_multijoy`, `INPUT_joy_5200_min/center/max`, mouse state
       (`INPUT_mouse_mode`, `INPUT_mouse_port`, `INPUT_mouse_delta_x/y`,
       `INPUT_mouse_buttons`, `INPUT_mouse_speed`, `INPUT_mouse_pot_min/max`,
       `INPUT_mouse_pen_ofs_h/v`, `INPUT_mouse_joy_inertia`, `INPUT_direct_mouse`),
       `INPUT_cx85`.
+      Done 2026-09-15: `Input_state_t` defined concretely in
+      [`src/instance.h`](src/instance.h) (replacing the forward declaration;
+      the old `Input_state_t *input` pointer member was removed) and
+      **embedded by value** in `Atari800_Instance` (`.input`). The
+      previously file-scope statics (`mouse_x/y`, `mouse_move_x/y`,
+      `mouse_pen_show_pointer`, `mouse_last_right/down`, `STICK[4]`,
+      `TRIG_input[4]`, `joy_multijoy_no`, `cx85_port`,
+      `max_scanline_counter`, `scanline_counter`) and the function-local
+      statics in `INPUT_Frame` (`last_key_code`, `last_key_break`,
+      `last_stick[4]`, `last_mouse_buttons`, `bit5_5200`) and `mouse_step`
+      (`e` → `mouse_step_e`) all moved into the struct; `input.c` aliases
+      the legacy tokens to `IN->...`. Non-zero defaults preserved in the
+      `atari.c` initializer (`key_code = AKEY_NONE`,
+      `key_consol = INPUT_CONSOL_NONE`,
+      `joy_block_opposite_directions = 1`, `joy_5200_min/center/max =
+      6/114/220`, `mouse_speed = 3`, `mouse_pot_min/max = 1/228`,
+      `mouse_pen_ofs_h/v = 42/2`, `mouse_joy_inertia = 10`,
+      `last_stick[4] = INPUT_STICK_CENTRE`); the rest match the old static
+      initialisers via zero-init. The `mouse_amiga_codes`/`mouse_st_codes`
+      tables stay file-scope `static const` *(shared, read-only)*.
 
 ---
 

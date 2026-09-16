@@ -99,76 +99,104 @@
 #define IS_DOUBLE(x,y) (((char_data(y, x) & 0x80) && font_b_double) || \
                         (((char_data(y, x) & 0x80) == 0) && font_a_double))
 
-/* Global variables */
-int XEP80_enabled = FALSE;
-int XEP80_port = 0;
+/* Transitional Option C bridge: the per-instance XEP80 state lives in
+   XEP80_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (XE = &inst->xep80, XEI = inst); inside this file the legacy
+   names are #undef'd and re-pointed to XE, so the _Ctx bodies (and all
+   static helpers, which are unchanged) operate on their own instance. */
+#undef XEP80_enabled
+#undef XEP80_port
+#undef XEP80_scrn_height
+#undef XEP80_char_height
+#undef XEP80_screen_1
+#undef XEP80_screen_2
 
-int XEP80_char_height = XEP80_CHAR_HEIGHT_NTSC;
-int XEP80_scrn_height = XEP80_HEIGHT * XEP80_CHAR_HEIGHT_NTSC;
+static Atari800_Instance *XEI;
+static XEP80_state_t *XE;
 
-/* Local state variables */
-static int output_word = 0;
+#define XEP80_PIN_CTX(inst) do { \
+	XEI = (inst); \
+	XE = &(inst)->xep80; \
+} while (0)
 
-static UWORD input_queue[IN_QUEUE_SIZE];
-static int input_count = 0;
+#define XEP80_enabled     (XE->enabled)
+#define XEP80_port        (XE->port)
+#define XEP80_scrn_height (XE->scrn_height)
+#define XEP80_char_height (XE->char_height)
+#define XEP80_screen_1    (XE->screen_1)
+#define XEP80_screen_2    (XE->screen_2)
 
+/* Local state variables (previously file-scope statics, now in
+   XEP80_state_t; the macros below keep the function bodies unchanged). */
+#define output_word           (XE->output_word)
+#define input_queue           (XE->input_queue)
+#define input_count           (XE->input_count)
 /* Indicates moment when receiving of a word started,
    or a moment when transmitting of the first word in the output queue
    started. Used to compare with ANTIC_CPU_CLOCK when determining
    a bit currently transmitted. */
-static unsigned int start_trans_cpu_clock;
+#define start_trans_cpu_clock (XE->start_trans_cpu_clock)
 /* Indicates that a byte is currently being received. */
-static int receiving = FALSE;
+#define receiving             (XE->receiving)
 
+/* The xpos/ypos macros below would intercept the field-name tokens inside
+   antic.h's ANTIC_xpos/ANTIC_ypos expansions, so re-route those to inline
+   helpers defined *before* the colliding macros exist. */
+static inline int XEP80_antic_xpos(void) { return Atari800_default->antic.xpos; }
+static inline int XEP80_antic_ypos(void) { return Atari800_default->antic.ypos; }
+#undef ANTIC_xpos
+#undef ANTIC_ypos
+#define ANTIC_xpos XEP80_antic_xpos()
+#define ANTIC_ypos XEP80_antic_ypos()
 
 /* Values in internal RAM */
-static int ypos = 0; /* location: $01 (R1) */
-static int xpos = 0; /* location: $02 (R2) */
-static UBYTE last_char = 0; /* location: $04 (R4) */
-static int lmargin = 0; /* location: $05 (R5) */
-static int rmargin = 0x4f; /* location: $06 (R6) */
-static int xscroll = 0; /* location: $1f (RAM bank 1 R7) */
+#define ypos          (XE->ypos)          /* location: $01 (R1) */
+#define xpos          (XE->xpos)          /* location: $02 (R2) */
+#define last_char     (XE->last_char)     /* location: $04 (R4) */
+#define lmargin       (XE->lmargin)       /* location: $05 (R5) */
+#define rmargin       (XE->rmargin)       /* location: $06 (R6) */
+#define xscroll       (XE->xscroll)       /* location: $1f (RAM bank 1 R7) */
 /* 25 pointers to start of data for each line. Originally at locations $20..$38. */
-static UBYTE *line_pointers[XEP80_HEIGHT];
-static int old_ypos = 0; /* location: $39 */
-static int old_xpos = 0; /* location: $3a */
-static int list_mode = FALSE; /* location: $3b */
-static int escape_mode = FALSE; /* location: $3c */
+#define line_pointers (XE->line_pointers)
+#define old_ypos      (XE->old_ypos)      /* location: $39 */
+#define old_xpos      (XE->old_xpos)      /* location: $3a */
+#define list_mode     (XE->list_mode)     /* location: $3b */
+#define escape_mode   (XE->escape_mode)   /* location: $3c */
 /* location: $3f */
-static int burst_mode = FALSE; /* bit 0 */
-static int screen_output = TRUE; /* bit 7; indicates screen/printer */
+#define burst_mode    (XE->burst_mode)    /* bit 0 */
+#define screen_output (XE->screen_output) /* bit 7; indicates screen/printer */
 
 /* Attribute Latch 0 */
-static UBYTE attrib_a = 0xff;
-static int font_a_index = 0;
-static int font_a_double = FALSE;
-static int font_a_blank = FALSE;
-static int font_a_blink = FALSE;
+#define attrib_a      (XE->attrib_a)
+#define font_a_index  (XE->font_a_index)
+#define font_a_double (XE->font_a_double)
+#define font_a_blank  (XE->font_a_blank)
+#define font_a_blink  (XE->font_a_blink)
 /* Attribute Latch 1 */
-static UBYTE attrib_b = 0xff;
-static int font_b_index = 0;
-static int font_b_double = FALSE;
-static int font_b_blank = FALSE;
-static int font_b_blink = FALSE;
+#define attrib_b      (XE->attrib_b)
+#define font_b_index  (XE->font_b_index)
+#define font_b_double (XE->font_b_double)
+#define font_b_blank  (XE->font_b_blank)
+#define font_b_blink  (XE->font_b_blink)
 
 /* TCP */
-static int cursor_on = TRUE; /* byte 13 */
-static int graphics_mode = FALSE;
-static int pal_mode = FALSE;
+#define cursor_on     (XE->cursor_on)     /* byte 13 */
+#define graphics_mode (XE->graphics_mode)
+#define pal_mode      (XE->pal_mode)
 
 /* VCR*/
-static int blink_reverse = FALSE; /* bit 0 */
-static int cursor_blink = FALSE; /* bit 1 */
-static int cursor_overwrite = FALSE; /* bit 2 */
-static int inverse_mode = FALSE; /* bit 3 */
-static int char_set = CHAR_SET_A; /* bits 6-7 */
+#define blink_reverse    (XE->blink_reverse)    /* bit 0 */
+#define cursor_blink     (XE->cursor_blink)     /* bit 1 */
+#define cursor_overwrite (XE->cursor_overwrite) /* bit 2 */
+#define inverse_mode     (XE->inverse_mode)     /* bit 3 */
+#define char_set         (XE->char_set)         /* bits 6-7 */
 
 /* CURS */
-static int cursor_x = 0;
-static int cursor_y = 0;
-static int curs = 0; /* Address of cursor in video RAM, $0000..$1fff */
+#define cursor_x (XE->cursor_x)
+#define cursor_y (XE->cursor_y)
+#define curs     (XE->curs) /* Address of cursor in video RAM, $0000..$1fff */
 
-static UBYTE video_ram[0x2000]; /* 8 KB of RAM */
+#define video_ram (XE->video_ram) /* 8 KB of RAM */
 #define char_data(y, x)	(*(line_pointers[(y)]+(x)))
 #define graph_data(y, x) (video_ram[(y)*XEP80_GRAPH_WIDTH/8+(x)])
 #define tab_stops(x) (video_ram[0x1900+(x)])
@@ -176,15 +204,13 @@ static UBYTE video_ram[0x2000]; /* 8 KB of RAM */
 static UBYTE const input_mask[2] = {0x02,0x20};
 static UBYTE const output_mask[2] = {0x01,0x10};
 
-UBYTE XEP80_screen_1[XEP80_SCRN_WIDTH*XEP80_MAX_SCRN_HEIGHT];
-UBYTE XEP80_screen_2[XEP80_SCRN_WIDTH*XEP80_MAX_SCRN_HEIGHT];
-
+/* Shared, read-only after XEP80_FONTS_InitFonts() loads it. */
 UBYTE (*font)[XEP80_FONTS_CHAR_COUNT][XEP80_MAX_CHAR_HEIGHT][XEP80_CHAR_WIDTH];
 
 /* Path to the XEP80's charset ROM image, marked as U12 on Jerzy Sobola's
    schematic: http://www.dereatari.republika.pl/schematy.htm
-   The ROM image is also available there. */
-static char charset_filename[FILENAME_MAX];
+   The ROM image is also available there. (Now per-instance state.) */
+#define charset_filename (XE->charset_filename)
 
 static void UpdateTVSystem(void)
 {
@@ -1629,34 +1655,39 @@ static void OutputWord(int word)
    Other functions.
    ---------------- */
 
-void XEP80_ChangeColors(void)
+void XEP80_ChangeColors_Ctx(Atari800_Instance *inst)
 {
+	XEP80_PIN_CTX(inst);
 	BlitScreen();
 }
 
-int XEP80_ReadConfig(char *string, char *ptr)
+int XEP80_ReadConfig_Ctx(Atari800_Instance *inst, char *string, char *ptr)
 {
+	XEP80_PIN_CTX(inst);
 	if (strcmp(string, "XEP80_CHARSET") == 0)
 		Util_strlcpy(charset_filename, ptr, sizeof(charset_filename));
 	else return FALSE; /* no match */
 	return TRUE; /* matched something */
 }
 
-void XEP80_WriteConfig(FILE *fp)
+void XEP80_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	XEP80_PIN_CTX(inst);
 	fprintf(fp, "XEP80_CHARSET=%s\n", charset_filename);
 }
 
-int XEP80_SetEnabled(int value)
+int XEP80_SetEnabled_Ctx(Atari800_Instance *inst, int value)
 {
+	XEP80_PIN_CTX(inst);
 	if (value && !XEP80_FONTS_inited && !XEP80_FONTS_InitFonts(charset_filename))
 		return FALSE;
 	XEP80_enabled = value;
 	return TRUE;
 }
 
-int XEP80_Initialise(int *argc, char *argv[])
+int XEP80_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	XEP80_PIN_CTX(inst);
 	int i, j;
 	int help_only = FALSE;
 	for (i = j = 1; i < *argc; i++) {
@@ -1695,7 +1726,7 @@ int XEP80_Initialise(int *argc, char *argv[])
 	if (help_only)
 		return TRUE;
 
-	if (XEP80_enabled && !XEP80_SetEnabled(XEP80_enabled)) {
+	if (XEP80_enabled && !XEP80_SetEnabled_Ctx(inst, XEP80_enabled)) {
 		XEP80_enabled = FALSE;
 		Log_print("Couldn't load XEP80 charset image: %s", charset_filename);
 		return FALSE;
@@ -1707,8 +1738,9 @@ int XEP80_Initialise(int *argc, char *argv[])
 	return TRUE;
 }
 
-UBYTE XEP80_GetBit(void)
+UBYTE XEP80_GetBit_Ctx(Atari800_Instance *inst)
 {
+	XEP80_PIN_CTX(inst);
 	UBYTE ret = 0xFF;
 	int word_bit_num;
 	int input_word;
@@ -1765,8 +1797,9 @@ UBYTE XEP80_GetBit(void)
 	return ret;
 }
 
-void XEP80_PutBit(UBYTE byte)
+void XEP80_PutBit_Ctx(Atari800_Instance *inst, UBYTE byte)
 {
+	XEP80_PIN_CTX(inst);
 	/* Number of CPU ticks since start of word receiving.
 	   TODO: Avoid overflows in this value (minimal issue, since transmission
 	   rate is 15.7 kHz - way too low to allow for overflows). */
@@ -1828,8 +1861,9 @@ void XEP80_PutBit(UBYTE byte)
 	}
 }
 
-void XEP80_StateSave(void)
+void XEP80_StateSave_Ctx(Atari800_Instance *inst)
 {
+	XEP80_PIN_CTX(inst);
 	StateSav_SaveINT(&XEP80_enabled, 1);
 	if (XEP80_enabled) {
 		int num_ticks = (int)(ANTIC_CPU_CLOCK - start_trans_cpu_clock);
@@ -1883,14 +1917,15 @@ void XEP80_StateSave(void)
 	}
 }
 
-void XEP80_StateRead(void)
+void XEP80_StateRead_Ctx(Atari800_Instance *inst)
 {
 	int local_xep80_enabled = FALSE;
 	int local_show_xep80 = FALSE;
 
+	XEP80_PIN_CTX(inst);
 	/* test for end of file */
 	StateSav_ReadINT(&local_xep80_enabled, 1);
-	if (!XEP80_SetEnabled(local_xep80_enabled))
+	if (!XEP80_SetEnabled_Ctx(inst, local_xep80_enabled))
 		XEP80_enabled = FALSE;
 
 	if (local_xep80_enabled) {

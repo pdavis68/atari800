@@ -87,11 +87,32 @@
 #  define PRId64 "lld"
 #endif
 
-int IDE_enabled = 0, IDE_debug = 0;
+/* Transitional Option C bridge: the per-instance IDE state lives in
+   IDE_state_t (instance.h). The *_Ctx entry points pin the file-scope
+   context (IDEs = &inst->ide); inside this file the legacy state names
+   route through IDEs, so the _Ctx bodies operate on their own instance.
+   The legacy code used a zero-initialised file-scope `struct ide_device`;
+   per instance the device state is heap-allocated lazily (and zeroed), so
+   the zero-init semantics are preserved. */
+static Atari800_Instance *IDEi;
+static IDE_state_t *IDEs;
 
-struct ide_device device;
+#define IDE_PIN_CTX(inst) do { \
+	IDEi = (inst); \
+	IDEs = &IDEi->ide; \
+	if (!IDEs->dev) { \
+		IDEs->dev = (struct ide_device *)Util_malloc(sizeof(struct ide_device)); \
+		memset(IDEs->dev, 0, sizeof(struct ide_device)); \
+	} \
+} while (0)
 
-static int count = 0;     /* for debug stuff */
+/* Route the legacy state names through the pinned context. */
+#undef IDE_enabled
+#undef IDE_debug
+#define IDE_enabled (IDEs->enabled)
+#define IDE_debug   (IDEs->debug)
+#define device      (*IDEs->dev)
+#define count       (IDEs->count)
 
 static inline void padstr(uint8_t *str, const char *src, int len) {
     int i;
@@ -852,19 +873,25 @@ static void mmio_ide_write(struct ide_device *s, int addr, uint8_t val) {
     }
 }
 
-void IDE_PutByte(uint16_t addr, uint8_t val) {
-    struct ide_device *s = &device;
+void IDE_PutByte_Ctx(Atari800_Instance *inst, uint16_t addr, uint8_t val) {
+    struct ide_device *s;
+    IDE_PIN_CTX(inst);
+    s = &device;
     mmio_ide_write(s, addr, val);
 }
 
-uint8_t IDE_GetByte(uint16_t addr, int no_side_effects) {
-    struct ide_device *s = &device;
+uint8_t IDE_GetByte_Ctx(Atari800_Instance *inst, uint16_t addr, int no_side_effects) {
+    struct ide_device *s;
+    IDE_PIN_CTX(inst);
+    s = &device;
     return mmio_ide_read(s, addr);
 }
 
-int IDE_Initialise(int *argc, char *argv[]) {
+int IDE_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[]) {
     int i, j, ret = TRUE;
     char *filename = NULL;
+
+    IDE_PIN_CTX(inst);
 
     if (IDE_debug)
         fprintf(stderr, "ide: init\n");
@@ -901,10 +928,13 @@ int IDE_Initialise(int *argc, char *argv[]) {
     return ret;
 }
 
-void IDE_Exit(void)
+void IDE_Exit_Ctx(Atari800_Instance *inst)
 {
+	IDE_PIN_CTX(inst);
 	if (IDE_enabled) {
 		fclose(device.file);
 		IDE_enabled = FALSE;
 	}
+	free(IDEs->dev);
+	IDEs->dev = NULL;
 }
