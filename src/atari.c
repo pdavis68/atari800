@@ -1863,22 +1863,22 @@ void Atari800_Frame_Ctx(Atari800_Instance *inst)
 	{
 		ATARI_PIN_CTX(inst);
 	UBYTE temp = Atari800_tv_mode == Atari800_TV_PAL;
-	StateSav_SaveUBYTE(&temp, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 	temp = Atari800_machine_type;
-	StateSav_SaveUBYTE(&temp, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 		temp = Atari800_builtin_basic;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 		temp = Atari800_keyboard_leds;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 		temp = Atari800_f_keys;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 		temp = Atari800_jumper;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 		temp = Atari800_builtin_game;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 		temp = Atari800_keyboard_detached;
-		StateSav_SaveUBYTE(&temp, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &temp, 1);
 	}
 }
 
@@ -1887,27 +1887,27 @@ void Atari800_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 	ATARI_PIN_CTX(inst);
 	if (version >= 7) {
 		UBYTE temp;
-		StateSav_ReadUBYTE(&temp, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 		Atari800_SetTVMode_Ctx(inst, temp ? Atari800_TV_PAL : Atari800_TV_NTSC);
-		StateSav_ReadUBYTE(&temp, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 		if (temp >= Atari800_MACHINE_SIZE) {
 			temp = Atari800_MACHINE_XLXE;
 			Log_print("Warning: Bad machine type read in from state save, defaulting to XL/XE");
 		}
 		Atari800_SetMachineType_Ctx(inst, temp);
 		if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_builtin_basic = temp != 0;
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_keyboard_leds = temp != 0;
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_f_keys = temp != 0;
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_jumper = temp != 0;
 			Atari800_UpdateJumper_Ctx(inst);
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_builtin_game = temp != 0;
-			StateSav_ReadUBYTE(&temp, 1);
+			StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 			Atari800_keyboard_detached = temp != 0;
 			Atari800_UpdateKeyboardDetached_Ctx(inst);
 		}
@@ -1921,12 +1921,12 @@ void Atari800_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 		int default_system;
 		int pil_on;
 
-		StateSav_ReadUBYTE(&temp, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
 		new_tv_mode = (temp == 0) ? Atari800_TV_PAL : Atari800_TV_NTSC;
 		Atari800_SetTVMode_Ctx(inst, new_tv_mode);
 
-		StateSav_ReadUBYTE(&temp, 1);
-		StateSav_ReadINT(&os, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &temp, 1);
+		StateSav_ReadINT_Ctx(inst, &os, 1);
 		switch (temp) {
 		case 0:
 			Atari800_machine_type = Atari800_MACHINE_800;
@@ -1975,9 +1975,9 @@ void Atari800_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 			break;
 		}
 
-		StateSav_ReadINT(&pil_on, 1);
-		StateSav_ReadINT(&default_tv_mode, 1);
-		StateSav_ReadINT(&default_system, 1);
+		StateSav_ReadINT_Ctx(inst, &pil_on, 1);
+		StateSav_ReadINT_Ctx(inst, &default_tv_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &default_system, 1);
 		Atari800_SetMachineType(Atari800_machine_type);
 	}
 	load_roms(inst);

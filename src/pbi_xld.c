@@ -698,49 +698,49 @@ static UBYTE PIO_Command_Frame(void)
 void PBI_XLD_StateSave_Ctx(Atari800_Instance *inst)
 {
 	PBI_XLD_PIN_CTX(inst);
-	StateSav_SaveINT(&PBI_XLD_enabled, 1);
+	StateSav_SaveINT_Ctx(inst, &PBI_XLD_enabled, 1);
 	if (PBI_XLD_enabled) {
-		StateSav_SaveINT(&PBI_XLD_v_enabled, 1);
-		StateSav_SaveINT(&X->d_enabled, 1);
-		StateSav_SaveFNAME(X->d_rom_filename);
-		StateSav_SaveFNAME(X->v_rom_filename);
+		StateSav_SaveINT_Ctx(inst, &PBI_XLD_v_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &X->d_enabled, 1);
+		StateSav_SaveFNAME_Ctx(inst, X->d_rom_filename);
+		StateSav_SaveFNAME_Ctx(inst, X->v_rom_filename);
 
-		StateSav_SaveUBYTE(&X->votrax_latch, 1);
-		StateSav_SaveUBYTE(&X->modem_latch, 1);
-		StateSav_SaveUBYTE(X->CommandFrame, sizeof(X->CommandFrame));
-		StateSav_SaveINT(&X->CommandIndex, 1);
-		StateSav_SaveUBYTE(X->DataBuffer, sizeof(X->DataBuffer));
-		StateSav_SaveINT(&X->DataIndex, 1);
-		StateSav_SaveINT(&X->TransferStatus, 1);
-		StateSav_SaveINT(&X->ExpectedBytes, 1);
-		StateSav_SaveINT(&VOTRAXSND_busy, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &X->votrax_latch, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &X->modem_latch, 1);
+		StateSav_SaveUBYTE_Ctx(inst, X->CommandFrame, sizeof(X->CommandFrame));
+		StateSav_SaveINT_Ctx(inst, &X->CommandIndex, 1);
+		StateSav_SaveUBYTE_Ctx(inst, X->DataBuffer, sizeof(X->DataBuffer));
+		StateSav_SaveINT_Ctx(inst, &X->DataIndex, 1);
+		StateSav_SaveINT_Ctx(inst, &X->TransferStatus, 1);
+		StateSav_SaveINT_Ctx(inst, &X->ExpectedBytes, 1);
+		StateSav_SaveINT_Ctx(inst, &VOTRAXSND_busy, 1);
 	}
 }
 
 void PBI_XLD_StateRead_Ctx(Atari800_Instance *inst)
 {
 	PBI_XLD_PIN_CTX(inst);
-	StateSav_ReadINT(&PBI_XLD_enabled, 1);
+	StateSav_ReadINT_Ctx(inst, &PBI_XLD_enabled, 1);
 	if (PBI_XLD_enabled) {
 		/* UI should have paused sound while doing this */
-		StateSav_ReadINT(&PBI_XLD_v_enabled, 1);
-		StateSav_ReadINT(&X->d_enabled, 1);
-		StateSav_ReadFNAME(X->d_rom_filename);
-		StateSav_ReadFNAME(X->v_rom_filename);
+		StateSav_ReadINT_Ctx(inst, &PBI_XLD_v_enabled, 1);
+		StateSav_ReadINT_Ctx(inst, &X->d_enabled, 1);
+		StateSav_ReadFNAME_Ctx(inst, X->d_rom_filename);
+		StateSav_ReadFNAME_Ctx(inst, X->v_rom_filename);
 		if (PBI_XLD_v_enabled) {
 			init_xld_v();
 			VOTRAXSND_Reinit();
 		}
 		if (X->d_enabled) init_xld_d();
-		StateSav_ReadUBYTE(&X->votrax_latch, 1);
-		StateSav_ReadUBYTE(&X->modem_latch, 1);
-		StateSav_ReadUBYTE(X->CommandFrame, sizeof(X->CommandFrame));
-		StateSav_ReadINT(&X->CommandIndex, 1);
-		StateSav_ReadUBYTE(X->DataBuffer, sizeof(X->DataBuffer));
-		StateSav_ReadINT(&X->DataIndex, 1);
-		StateSav_ReadINT(&X->TransferStatus, 1);
-		StateSav_ReadINT(&X->ExpectedBytes, 1);
-		StateSav_ReadINT(&VOTRAXSND_busy, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &X->votrax_latch, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &X->modem_latch, 1);
+		StateSav_ReadUBYTE_Ctx(inst, X->CommandFrame, sizeof(X->CommandFrame));
+		StateSav_ReadINT_Ctx(inst, &X->CommandIndex, 1);
+		StateSav_ReadUBYTE_Ctx(inst, X->DataBuffer, sizeof(X->DataBuffer));
+		StateSav_ReadINT_Ctx(inst, &X->DataIndex, 1);
+		StateSav_ReadINT_Ctx(inst, &X->TransferStatus, 1);
+		StateSav_ReadINT_Ctx(inst, &X->ExpectedBytes, 1);
+		StateSav_ReadINT_Ctx(inst, &VOTRAXSND_busy, 1);
 	}
 	else {
 		PBI_XLD_v_enabled = FALSE;

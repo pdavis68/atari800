@@ -1864,7 +1864,7 @@ void XEP80_PutBit_Ctx(Atari800_Instance *inst, UBYTE byte)
 void XEP80_StateSave_Ctx(Atari800_Instance *inst)
 {
 	XEP80_PIN_CTX(inst);
-	StateSav_SaveINT(&XEP80_enabled, 1);
+	StateSav_SaveINT_Ctx(inst, &XEP80_enabled, 1);
 	if (XEP80_enabled) {
 		int num_ticks = (int)(ANTIC_CPU_CLOCK - start_trans_cpu_clock);
 #if SUPPORTS_CHANGE_VIDEOMODE
@@ -1872,48 +1872,48 @@ void XEP80_StateSave_Ctx(Atari800_Instance *inst)
 #else
 		int show_xep80 = 1;
 #endif /* SUPPORTS_CHANGE_VIDEOMODE */
-		StateSav_SaveINT(&XEP80_port, 1);
-		StateSav_SaveINT(&show_xep80, 1);
-		StateSav_SaveINT(&num_ticks, 1);
-		StateSav_SaveINT(&output_word, 1);
-		StateSav_SaveINT(&input_count, 1);
-		StateSav_SaveINT(&receiving, 1);
-		StateSav_SaveUWORD(input_queue, IN_QUEUE_SIZE);
-		StateSav_SaveINT(&receiving, 1);
-		StateSav_SaveUBYTE(&last_char, 1);
+		StateSav_SaveINT_Ctx(inst, &XEP80_port, 1);
+		StateSav_SaveINT_Ctx(inst, &show_xep80, 1);
+		StateSav_SaveINT_Ctx(inst, &num_ticks, 1);
+		StateSav_SaveINT_Ctx(inst, &output_word, 1);
+		StateSav_SaveINT_Ctx(inst, &input_count, 1);
+		StateSav_SaveINT_Ctx(inst, &receiving, 1);
+		StateSav_SaveUWORD_Ctx(inst, input_queue, IN_QUEUE_SIZE);
+		StateSav_SaveINT_Ctx(inst, &receiving, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &last_char, 1);
 
-		StateSav_SaveINT(&xpos, 1);
-		StateSav_SaveINT(&xscroll, 1);
-		StateSav_SaveINT(&ypos, 1);
-		StateSav_SaveINT(&cursor_x, 1);
-		StateSav_SaveINT(&cursor_y, 1);
-		StateSav_SaveINT(&curs, 1);
-		StateSav_SaveINT(&old_xpos, 1);
-		StateSav_SaveINT(&old_ypos, 1);
-		StateSav_SaveINT(&lmargin, 1);
-		StateSav_SaveINT(&rmargin, 1);
-		StateSav_SaveUBYTE(&attrib_a, 1);
-		StateSav_SaveUBYTE(&attrib_b, 1);
-		StateSav_SaveINT(&list_mode, 1);
-		StateSav_SaveINT(&escape_mode, 1);
-		StateSav_SaveINT(&char_set, 1);
-		StateSav_SaveINT(&cursor_on, 1);
-		StateSav_SaveINT(&cursor_blink, 1);
-		StateSav_SaveINT(&cursor_overwrite, 1);
-		StateSav_SaveINT(&blink_reverse, 1);
-		StateSav_SaveINT(&inverse_mode, 1);
-		StateSav_SaveINT(&screen_output, 1);
-		StateSav_SaveINT(&burst_mode, 1);
-		StateSav_SaveINT(&graphics_mode, 1);
-		StateSav_SaveINT(&pal_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &xpos, 1);
+		StateSav_SaveINT_Ctx(inst, &xscroll, 1);
+		StateSav_SaveINT_Ctx(inst, &ypos, 1);
+		StateSav_SaveINT_Ctx(inst, &cursor_x, 1);
+		StateSav_SaveINT_Ctx(inst, &cursor_y, 1);
+		StateSav_SaveINT_Ctx(inst, &curs, 1);
+		StateSav_SaveINT_Ctx(inst, &old_xpos, 1);
+		StateSav_SaveINT_Ctx(inst, &old_ypos, 1);
+		StateSav_SaveINT_Ctx(inst, &lmargin, 1);
+		StateSav_SaveINT_Ctx(inst, &rmargin, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &attrib_a, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &attrib_b, 1);
+		StateSav_SaveINT_Ctx(inst, &list_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &escape_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &char_set, 1);
+		StateSav_SaveINT_Ctx(inst, &cursor_on, 1);
+		StateSav_SaveINT_Ctx(inst, &cursor_blink, 1);
+		StateSav_SaveINT_Ctx(inst, &cursor_overwrite, 1);
+		StateSav_SaveINT_Ctx(inst, &blink_reverse, 1);
+		StateSav_SaveINT_Ctx(inst, &inverse_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &screen_output, 1);
+		StateSav_SaveINT_Ctx(inst, &burst_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &graphics_mode, 1);
+		StateSav_SaveINT_Ctx(inst, &pal_mode, 1);
 		{
 			int i;
 			for (i = 0; i < XEP80_HEIGHT; ++i) {
 				UBYTE ptr = ((int)(line_pointers[i] - video_ram)) / 0x100;
-				StateSav_SaveUBYTE(&ptr, 1);
+				StateSav_SaveUBYTE_Ctx(inst, &ptr, 1);
 			}
 		}
-		StateSav_SaveUBYTE(video_ram, 8192);
+		StateSav_SaveUBYTE_Ctx(inst, video_ram, 8192);
 	}
 }
 
@@ -1924,59 +1924,59 @@ void XEP80_StateRead_Ctx(Atari800_Instance *inst)
 
 	XEP80_PIN_CTX(inst);
 	/* test for end of file */
-	StateSav_ReadINT(&local_xep80_enabled, 1);
+	StateSav_ReadINT_Ctx(inst, &local_xep80_enabled, 1);
 	if (!XEP80_SetEnabled_Ctx(inst, local_xep80_enabled))
 		XEP80_enabled = FALSE;
 
 	if (local_xep80_enabled) {
 		int num_ticks;
-		StateSav_ReadINT(&XEP80_port, 1);
-		StateSav_ReadINT(&local_show_xep80, 1);
-		StateSav_ReadINT(&num_ticks, 1);
+		StateSav_ReadINT_Ctx(inst, &XEP80_port, 1);
+		StateSav_ReadINT_Ctx(inst, &local_show_xep80, 1);
+		StateSav_ReadINT_Ctx(inst, &num_ticks, 1);
 		start_trans_cpu_clock = ANTIC_CPU_CLOCK - num_ticks;
-		StateSav_ReadINT(&output_word, 1);
-		StateSav_ReadINT(&input_count, 1);
-		StateSav_ReadINT(&receiving, 1);
-		StateSav_ReadUWORD(input_queue, IN_QUEUE_SIZE);
-		StateSav_ReadINT(&receiving, 1);
-		StateSav_ReadUBYTE(&last_char, 1);
+		StateSav_ReadINT_Ctx(inst, &output_word, 1);
+		StateSav_ReadINT_Ctx(inst, &input_count, 1);
+		StateSav_ReadINT_Ctx(inst, &receiving, 1);
+		StateSav_ReadUWORD_Ctx(inst, input_queue, IN_QUEUE_SIZE);
+		StateSav_ReadINT_Ctx(inst, &receiving, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &last_char, 1);
 
-		StateSav_ReadINT(&xpos, 1);
-		StateSav_ReadINT(&xscroll, 1);
-		StateSav_ReadINT(&ypos, 1);
-		StateSav_ReadINT(&cursor_x, 1);
-		StateSav_ReadINT(&cursor_y, 1);
-		StateSav_ReadINT(&curs, 1);
-		StateSav_ReadINT(&old_xpos, 1);
-		StateSav_ReadINT(&old_ypos, 1);
-		StateSav_ReadINT(&lmargin, 1);
-		StateSav_ReadINT(&rmargin, 1);
-		StateSav_ReadUBYTE(&attrib_a, 1);
+		StateSav_ReadINT_Ctx(inst, &xpos, 1);
+		StateSav_ReadINT_Ctx(inst, &xscroll, 1);
+		StateSav_ReadINT_Ctx(inst, &ypos, 1);
+		StateSav_ReadINT_Ctx(inst, &cursor_x, 1);
+		StateSav_ReadINT_Ctx(inst, &cursor_y, 1);
+		StateSav_ReadINT_Ctx(inst, &curs, 1);
+		StateSav_ReadINT_Ctx(inst, &old_xpos, 1);
+		StateSav_ReadINT_Ctx(inst, &old_ypos, 1);
+		StateSav_ReadINT_Ctx(inst, &lmargin, 1);
+		StateSav_ReadINT_Ctx(inst, &rmargin, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &attrib_a, 1);
 		UpdateAttributeBits(attrib_a, &font_a_index, &font_a_double, &font_a_blank, &font_a_blink);
-		StateSav_ReadUBYTE(&attrib_b, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &attrib_b, 1);
 		UpdateAttributeBits(attrib_b, &font_b_index, &font_b_double, &font_b_blank, &font_b_blink);
-		StateSav_ReadINT(&list_mode, 1);
-		StateSav_ReadINT(&escape_mode, 1);
-		StateSav_ReadINT(&char_set, 1);
-		StateSav_ReadINT(&cursor_on, 1);
-		StateSav_ReadINT(&cursor_blink, 1);
-		StateSav_ReadINT(&cursor_overwrite, 1);
-		StateSav_ReadINT(&blink_reverse, 1);
-		StateSav_ReadINT(&inverse_mode, 1);
-		StateSav_ReadINT(&screen_output, 1);
-		StateSav_ReadINT(&burst_mode, 1);
-		StateSav_ReadINT(&graphics_mode, 1);
-		StateSav_ReadINT(&pal_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &list_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &escape_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &char_set, 1);
+		StateSav_ReadINT_Ctx(inst, &cursor_on, 1);
+		StateSav_ReadINT_Ctx(inst, &cursor_blink, 1);
+		StateSav_ReadINT_Ctx(inst, &cursor_overwrite, 1);
+		StateSav_ReadINT_Ctx(inst, &blink_reverse, 1);
+		StateSav_ReadINT_Ctx(inst, &inverse_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &screen_output, 1);
+		StateSav_ReadINT_Ctx(inst, &burst_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &graphics_mode, 1);
+		StateSav_ReadINT_Ctx(inst, &pal_mode, 1);
 		{
 			int i;
 			for (i = 0; i < XEP80_HEIGHT; ++i) {
 				UBYTE ptr;
-				StateSav_ReadUBYTE(&ptr, 1);
+				StateSav_ReadUBYTE_Ctx(inst, &ptr, 1);
 				line_pointers[i] = video_ram + 0x100*ptr;
 			}
 		}
 
-		StateSav_ReadUBYTE(video_ram, 8192);
+		StateSav_ReadUBYTE_Ctx(inst, video_ram, 8192);
 		UpdateTVSystem();
 		BlitScreen(); /* Clear the old text screen */
 	}

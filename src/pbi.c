@@ -343,17 +343,17 @@ void PBI_D7PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 void PBI_StateSave_Ctx(Atari800_Instance *inst)
 {
 	PBI_PIN_CTX(inst);
-	StateSav_SaveUBYTE(&D1FF_LATCH, 1);
-	StateSav_SaveINT(&PBI_D6D7ram, 1);
-	StateSav_SaveINT(&PBI_IRQ, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &D1FF_LATCH, 1);
+	StateSav_SaveINT_Ctx(inst, &PBI_D6D7ram, 1);
+	StateSav_SaveINT_Ctx(inst, &PBI_IRQ, 1);
 }
 
 void PBI_StateRead_Ctx(Atari800_Instance *inst)
 {
 	PBI_PIN_CTX(inst);
-	StateSav_ReadUBYTE(&D1FF_LATCH, 1);
-	StateSav_ReadINT(&PBI_D6D7ram, 1);
-	StateSav_ReadINT(&PBI_IRQ, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &D1FF_LATCH, 1);
+	StateSav_ReadINT_Ctx(inst, &PBI_D6D7ram, 1);
+	StateSav_ReadINT_Ctx(inst, &PBI_IRQ, 1);
 }
 
 #endif /* #ifndef BASIC */

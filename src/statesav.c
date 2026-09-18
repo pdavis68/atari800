@@ -123,7 +123,9 @@ static Statesav_state_t *SS;
 #define STATESAV_PIN_CTX(inst) \
 	do { SS = &(inst)->statesav; } while (0)
 
-#define StateFile  ((gzFile) SS->StateFile)
+/* StateFile is stored opaquely as void *; gzFile / FILE * / char * (the
+   in-memory variants) all convert implicitly from void * in C. */
+#define StateFile  (SS->StateFile)
 #define nFileError (SS->nFileError)
 
 static void GetGZErrorText(void)

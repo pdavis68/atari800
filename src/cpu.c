@@ -2578,37 +2578,37 @@ void CPU_Reset(Atari800_Instance *inst)
 void CPU_StateSave(Atari800_Instance *inst, UBYTE SaveVerbose)
 {
 	STATESAV_TAG(cpu);
-	StateSav_SaveUBYTE(&inst->cpu.regA, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.regA, 1);
 
 	CPU_GetStatus(inst);	/* Make sure flags are all updated */
-	StateSav_SaveUBYTE(&inst->cpu.regP, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.regP, 1);
 
-	StateSav_SaveUBYTE(&inst->cpu.regS, 1);
-	StateSav_SaveUBYTE(&inst->cpu.regX, 1);
-	StateSav_SaveUBYTE(&inst->cpu.regY, 1);
-	StateSav_SaveUBYTE(&inst->cpu.IRQ, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.regS, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.regX, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.regY, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &inst->cpu.IRQ, 1);
 
 	MEMORY_StateSaveCtx(inst, SaveVerbose);
 
 	STATESAV_TAG(pc);
-	StateSav_SaveUWORD(&inst->cpu.regPC, 1);
+	StateSav_SaveUWORD_Ctx(inst, &inst->cpu.regPC, 1);
 }
 
 void CPU_StateRead(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE StateVersion)
 {
-	StateSav_ReadUBYTE(&inst->cpu.regA, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.regA, 1);
 
-	StateSav_ReadUBYTE(&inst->cpu.regP, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.regP, 1);
 	CPU_PutStatus(inst);	/* Make sure flags are all updated */
 
-	StateSav_ReadUBYTE(&inst->cpu.regS, 1);
-	StateSav_ReadUBYTE(&inst->cpu.regX, 1);
-	StateSav_ReadUBYTE(&inst->cpu.regY, 1);
-	StateSav_ReadUBYTE(&inst->cpu.IRQ, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.regS, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.regX, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.regY, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &inst->cpu.IRQ, 1);
 
 	MEMORY_StateReadCtx(inst, SaveVerbose, StateVersion);
 
-	StateSav_ReadUWORD(&inst->cpu.regPC, 1);
+	StateSav_ReadUWORD_Ctx(inst, &inst->cpu.regPC, 1);
 }
 
 #endif

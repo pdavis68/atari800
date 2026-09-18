@@ -2000,8 +2000,8 @@ void SIO_StateSave_Ctx(Atari800_Instance *inst)
 	int i;
 
 	for (i = 0; i < 8; i++) {
-		StateSav_SaveINT((int *) &SIO_drive_status[i], 1);
-		StateSav_SaveFNAME(SIO_filename[i]);
+		StateSav_SaveINT_Ctx(inst, (int *) &SIO_drive_status[i], 1);
+		StateSav_SaveFNAME_Ctx(inst, SIO_filename[i]);
 	}
 }
 
@@ -2014,10 +2014,10 @@ void SIO_StateRead_Ctx(Atari800_Instance *inst)
 		int saved_drive_status;
 		char filename[FILENAME_MAX];
 
-		StateSav_ReadINT(&saved_drive_status, 1);
+		StateSav_ReadINT_Ctx(inst, &saved_drive_status, 1);
 		SIO_drive_status[i] = (SIO_UnitStatus)saved_drive_status;
 
-		StateSav_ReadFNAME(filename);
+		StateSav_ReadFNAME_Ctx(inst, filename);
 		if (filename[0] == 0)
 			continue;
 

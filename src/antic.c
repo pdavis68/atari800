@@ -4189,53 +4189,53 @@ void ANTIC_StateSave_Ctx(Atari800_Instance *inst)
 {
 	ANTIC_PIN_CTX(inst);
 	STATESAV_TAG(antic);
-	StateSav_SaveUBYTE(&ANTIC_DMACTL, 1);
-	StateSav_SaveUBYTE(&ANTIC_CHACTL, 1);
-	StateSav_SaveUBYTE(&ANTIC_HSCROL, 1);
-	StateSav_SaveUBYTE(&ANTIC_VSCROL, 1);
-	StateSav_SaveUBYTE(&ANTIC_PMBASE, 1);
-	StateSav_SaveUBYTE(&ANTIC_CHBASE, 1);
-	StateSav_SaveUBYTE(&ANTIC_NMIEN, 1);
-	StateSav_SaveUBYTE(&ANTIC_NMIST, 1);
-	StateSav_SaveUBYTE(&IR, 1);
-	StateSav_SaveUBYTE(&anticmode, 1);
-	StateSav_SaveUBYTE(&dctr, 1);
-	StateSav_SaveUBYTE(&lastline, 1);
-	StateSav_SaveUBYTE(&need_dl, 1);
-	StateSav_SaveUBYTE(&vscrol_off, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_DMACTL, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_CHACTL, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_HSCROL, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_VSCROL, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_PMBASE, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_CHBASE, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_NMIEN, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &ANTIC_NMIST, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &IR, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &anticmode, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &dctr, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &lastline, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &need_dl, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &vscrol_off, 1);
 
-	StateSav_SaveUWORD(&ANTIC_dlist, 1);
-	StateSav_SaveUWORD(&screenaddr, 1);
+	StateSav_SaveUWORD_Ctx(inst, &ANTIC_dlist, 1);
+	StateSav_SaveUWORD_Ctx(inst, &screenaddr, 1);
 
-	StateSav_SaveINT(&ANTIC_xpos, 1);
-	StateSav_SaveINT(&ANTIC_xpos_limit, 1);
-	StateSav_SaveINT(&ANTIC_ypos, 1);
+	StateSav_SaveINT_Ctx(inst, &ANTIC_xpos, 1);
+	StateSav_SaveINT_Ctx(inst, &ANTIC_xpos_limit, 1);
+	StateSav_SaveINT_Ctx(inst, &ANTIC_ypos, 1);
 }
 
 void ANTIC_StateRead_Ctx(Atari800_Instance *inst)
 {
 	ANTIC_PIN_CTX(inst);
-	StateSav_ReadUBYTE(&ANTIC_DMACTL, 1);
-	StateSav_ReadUBYTE(&ANTIC_CHACTL, 1);
-	StateSav_ReadUBYTE(&ANTIC_HSCROL, 1);
-	StateSav_ReadUBYTE(&ANTIC_VSCROL, 1);
-	StateSav_ReadUBYTE(&ANTIC_PMBASE, 1);
-	StateSav_ReadUBYTE(&ANTIC_CHBASE, 1);
-	StateSav_ReadUBYTE(&ANTIC_NMIEN, 1);
-	StateSav_ReadUBYTE(&ANTIC_NMIST, 1);
-	StateSav_ReadUBYTE(&IR, 1);
-	StateSav_ReadUBYTE(&anticmode, 1);
-	StateSav_ReadUBYTE(&dctr, 1);
-	StateSav_ReadUBYTE(&lastline, 1);
-	StateSav_ReadUBYTE(&need_dl, 1);
-	StateSav_ReadUBYTE(&vscrol_off, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_DMACTL, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_CHACTL, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_HSCROL, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_VSCROL, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_PMBASE, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_CHBASE, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_NMIEN, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &ANTIC_NMIST, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &IR, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &anticmode, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &dctr, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &lastline, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &need_dl, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &vscrol_off, 1);
 
-	StateSav_ReadUWORD(&ANTIC_dlist, 1);
-	StateSav_ReadUWORD(&screenaddr, 1);
+	StateSav_ReadUWORD_Ctx(inst, &ANTIC_dlist, 1);
+	StateSav_ReadUWORD_Ctx(inst, &screenaddr, 1);
 
-	StateSav_ReadINT(&ANTIC_xpos, 1);
-	StateSav_ReadINT(&ANTIC_xpos_limit, 1);
-	StateSav_ReadINT(&ANTIC_ypos, 1);
+	StateSav_ReadINT_Ctx(inst, &ANTIC_xpos, 1);
+	StateSav_ReadINT_Ctx(inst, &ANTIC_xpos_limit, 1);
+	StateSav_ReadINT_Ctx(inst, &ANTIC_ypos, 1);
 
 	ANTIC_PutByte(ANTIC_OFFSET_DMACTL, ANTIC_DMACTL);
 	ANTIC_PutByte(ANTIC_OFFSET_CHACTL, ANTIC_CHACTL);

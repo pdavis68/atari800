@@ -883,24 +883,24 @@ void POKEY_StateSave_Ctx(Atari800_Instance *inst)
 	int keypressed = 0;
 
 	STATESAV_TAG(pokey);
-	StateSav_SaveUBYTE(&POKEY_KBCODE, 1);
-	StateSav_SaveUBYTE(&POKEY_IRQST, 1);
-	StateSav_SaveUBYTE(&POKEY_IRQEN, 1);
-	StateSav_SaveUBYTE(&POKEY_SKCTL, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_KBCODE, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_IRQST, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_IRQEN, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_SKCTL, 1);
 
-	StateSav_SaveINT(&shift_key, 1);
-	StateSav_SaveINT(&keypressed, 1);
-	StateSav_SaveINT(&POKEY_DELAYED_SERIN_IRQ, 1);
-	StateSav_SaveINT(&POKEY_DELAYED_SEROUT_IRQ, 1);
-	StateSav_SaveINT(&POKEY_DELAYED_XMTDONE_IRQ, 1);
+	StateSav_SaveINT_Ctx(inst, &shift_key, 1);
+	StateSav_SaveINT_Ctx(inst, &keypressed, 1);
+	StateSav_SaveINT_Ctx(inst, &POKEY_DELAYED_SERIN_IRQ, 1);
+	StateSav_SaveINT_Ctx(inst, &POKEY_DELAYED_SEROUT_IRQ, 1);
+	StateSav_SaveINT_Ctx(inst, &POKEY_DELAYED_XMTDONE_IRQ, 1);
 
-	StateSav_SaveUBYTE(&POKEY_AUDF[0], 4);
-	StateSav_SaveUBYTE(&POKEY_AUDC[0], 4);
-	StateSav_SaveUBYTE(&POKEY_AUDCTL[0], 1);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_AUDF[0], 4);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_AUDC[0], 4);
+	StateSav_SaveUBYTE_Ctx(inst, &POKEY_AUDCTL[0], 1);
 
-	StateSav_SaveINT(&POKEY_DivNIRQ[0], 4);
-	StateSav_SaveINT(&POKEY_DivNMax[0], 4);
-	StateSav_SaveINT(&POKEY_Base_mult[0], 1);
+	StateSav_SaveINT_Ctx(inst, &POKEY_DivNIRQ[0], 4);
+	StateSav_SaveINT_Ctx(inst, &POKEY_DivNMax[0], 4);
+	StateSav_SaveINT_Ctx(inst, &POKEY_Base_mult[0], 1);
 }
 
 void POKEY_StateRead_Ctx(Atari800_Instance *inst)
@@ -910,29 +910,29 @@ void POKEY_StateRead_Ctx(Atari800_Instance *inst)
 	int shift_key;
 	int keypressed;
 
-	StateSav_ReadUBYTE(&POKEY_KBCODE, 1);
-	StateSav_ReadUBYTE(&POKEY_IRQST, 1);
-	StateSav_ReadUBYTE(&POKEY_IRQEN, 1);
-	StateSav_ReadUBYTE(&POKEY_SKCTL, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_KBCODE, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_IRQST, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_IRQEN, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_SKCTL, 1);
 
-	StateSav_ReadINT(&shift_key, 1);
-	StateSav_ReadINT(&keypressed, 1);
-	StateSav_ReadINT(&POKEY_DELAYED_SERIN_IRQ, 1);
-	StateSav_ReadINT(&POKEY_DELAYED_SEROUT_IRQ, 1);
-	StateSav_ReadINT(&POKEY_DELAYED_XMTDONE_IRQ, 1);
+	StateSav_ReadINT_Ctx(inst, &shift_key, 1);
+	StateSav_ReadINT_Ctx(inst, &keypressed, 1);
+	StateSav_ReadINT_Ctx(inst, &POKEY_DELAYED_SERIN_IRQ, 1);
+	StateSav_ReadINT_Ctx(inst, &POKEY_DELAYED_SEROUT_IRQ, 1);
+	StateSav_ReadINT_Ctx(inst, &POKEY_DELAYED_XMTDONE_IRQ, 1);
 
-	StateSav_ReadUBYTE(&POKEY_AUDF[0], 4);
-	StateSav_ReadUBYTE(&POKEY_AUDC[0], 4);
-	StateSav_ReadUBYTE(&POKEY_AUDCTL[0], 1);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_AUDF[0], 4);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_AUDC[0], 4);
+	StateSav_ReadUBYTE_Ctx(inst, &POKEY_AUDCTL[0], 1);
 	for (i = 0; i < 4; i++) {
 		POKEY_PutByte((UWORD) (POKEY_OFFSET_AUDF1 + i * 2), POKEY_AUDF[i]);
 		POKEY_PutByte((UWORD) (POKEY_OFFSET_AUDC1 + i * 2), POKEY_AUDC[i]);
 	}
 	POKEY_PutByte(POKEY_OFFSET_AUDCTL, POKEY_AUDCTL[0]);
 
-	StateSav_ReadINT(&POKEY_DivNIRQ[0], 4);
-	StateSav_ReadINT(&POKEY_DivNMax[0], 4);
-	StateSav_ReadINT(&POKEY_Base_mult[0], 1);
+	StateSav_ReadINT_Ctx(inst, &POKEY_DivNIRQ[0], 4);
+	StateSav_ReadINT_Ctx(inst, &POKEY_DivNMax[0], 4);
+	StateSav_ReadINT_Ctx(inst, &POKEY_Base_mult[0], 1);
 }
 
 #endif

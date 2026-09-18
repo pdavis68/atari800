@@ -2164,9 +2164,9 @@ void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 
 	/* Read the cart type from the file.  If there is no cart type, because we have
 	   reached the end of the file, this will just default to CART_NONE */
-	StateSav_ReadINT(&saved_type, 1);
+	StateSav_ReadINT_Ctx(inst, &saved_type, 1);
 	if (saved_type != CARTRIDGE_NONE) {
-		StateSav_ReadFNAME(filename);
+		StateSav_ReadFNAME_Ctx(inst, filename);
 		if (filename[0]) {
 			/* Insert the cartridge... */
 			if (CARTRIDGE_Insert(filename) >= 0) {
@@ -2176,10 +2176,10 @@ void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 		}
 		if (version >= 7)
 			/* Read the cartridge's state (current bank etc.). */
-			StateSav_ReadINT(&CARTRIDGE_main.state, 1);
+			StateSav_ReadINT_Ctx(inst, &CARTRIDGE_main.state, 1);
 		if (version >= 8) {
 			/* Read the cartridge's image type (raw, cart - for RAM carts updating on remove). */
-			StateSav_ReadINT(&CARTRIDGE_main.raw, 1);
+			StateSav_ReadINT_Ctx(inst, &CARTRIDGE_main.raw, 1);
 		}
 	}
 	else
@@ -2189,8 +2189,8 @@ void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 		/* Minus value indicates a piggyback cartridge present. */
 		CARTRIDGE_main.type = -saved_type;
 	
-		StateSav_ReadINT(&saved_type, 1);
-		StateSav_ReadFNAME(filename);
+		StateSav_ReadINT_Ctx(inst, &saved_type, 1);
+		StateSav_ReadFNAME_Ctx(inst, filename);
 		if (filename[0]) {
 			/* Insert the cartridge... */
 			if (CARTRIDGE_Insert_Second(filename) >= 0) {
@@ -2200,12 +2200,12 @@ void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 		}
 		if (version >= 7)
 			/* Read the cartridge's state (current bank etc.). */
-			StateSav_ReadINT(&CARTRIDGE_piggyback.state, 1);
+			StateSav_ReadINT_Ctx(inst, &CARTRIDGE_piggyback.state, 1);
 		else {
 			/* Savestate version 6 explicitely stored information about
 			   the active cartridge. */
 			int piggyback_active;
-			StateSav_ReadINT(&piggyback_active, 1);
+			StateSav_ReadINT_Ctx(inst, &piggyback_active, 1);
 			if (piggyback_active)
 				active_cart = &CARTRIDGE_piggyback;
 			else
@@ -2217,7 +2217,7 @@ void CARTRIDGE_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 		}
 		if (version >= 8) {
 			/* Read the cartridge's image type (raw, cart - for RAM carts updating on remove). */
-			StateSav_ReadINT(&CARTRIDGE_piggyback.raw, 1);
+			StateSav_ReadINT_Ctx(inst, &CARTRIDGE_piggyback.raw, 1);
 		}
 	}
 
@@ -2241,19 +2241,19 @@ void CARTRIDGE_StateSave_Ctx(Atari800_Instance *inst)
 		cart_save = -cart_save;
 	
 	/* Save the cartridge type, or CARTRIDGE_NONE if there isn't one...*/
-	StateSav_SaveINT(&cart_save, 1);
+	StateSav_SaveINT_Ctx(inst, &cart_save, 1);
 	if (CARTRIDGE_main.type != CARTRIDGE_NONE) {
-		StateSav_SaveFNAME(CARTRIDGE_main.filename);
-		StateSav_SaveINT(&CARTRIDGE_main.state, 1);
-		StateSav_SaveINT(&CARTRIDGE_main.raw, 1);
+		StateSav_SaveFNAME_Ctx(inst, CARTRIDGE_main.filename);
+		StateSav_SaveINT_Ctx(inst, &CARTRIDGE_main.state, 1);
+		StateSav_SaveINT_Ctx(inst, &CARTRIDGE_main.raw, 1);
 	}
 
 	if (CARTRIDGE_piggyback.type != CARTRIDGE_NONE) {
 		/* Save the second cartridge type and name*/
-		StateSav_SaveINT(&CARTRIDGE_piggyback.type, 1);
-		StateSav_SaveFNAME(CARTRIDGE_piggyback.filename);
-		StateSav_SaveINT(&CARTRIDGE_piggyback.state, 1);
-		StateSav_SaveINT(&CARTRIDGE_piggyback.raw, 1);
+		StateSav_SaveINT_Ctx(inst, &CARTRIDGE_piggyback.type, 1);
+		StateSav_SaveFNAME_Ctx(inst, CARTRIDGE_piggyback.filename);
+		StateSav_SaveINT_Ctx(inst, &CARTRIDGE_piggyback.state, 1);
+		StateSav_SaveINT_Ctx(inst, &CARTRIDGE_piggyback.raw, 1);
 	}
 }
 

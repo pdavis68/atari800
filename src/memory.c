@@ -360,32 +360,32 @@ void MEMORY_StateSaveCtx(Atari800_Instance *inst, UBYTE SaveVerbose)
 
 	/* Axlon/Mosaic for 400/800 */
 	if (Atari800_machine_type == Atari800_MACHINE_800) {
-		StateSav_SaveINT(&MEMORY_axlon_num_banks, 1);
+		StateSav_SaveINT_Ctx(inst, &MEMORY_axlon_num_banks, 1);
 		if (MEMORY_axlon_num_banks > 0){
-			StateSav_SaveINT(&axlon_curbank, 1);
-			StateSav_SaveINT(&MEMORY_axlon_0f_mirror, 1);
-			StateSav_SaveUBYTE(axlon_ram, MEMORY_axlon_num_banks * 0x4000);
+			StateSav_SaveINT_Ctx(inst, &axlon_curbank, 1);
+			StateSav_SaveINT_Ctx(inst, &MEMORY_axlon_0f_mirror, 1);
+			StateSav_SaveUBYTE_Ctx(inst, axlon_ram, MEMORY_axlon_num_banks * 0x4000);
 		}
-		StateSav_SaveINT(&mosaic_current_num_banks, 1);
+		StateSav_SaveINT_Ctx(inst, &mosaic_current_num_banks, 1);
 		if (mosaic_current_num_banks > 0) {
-			StateSav_SaveINT(&mosaic_curbank, 1);
-			StateSav_SaveUBYTE(mosaic_ram, mosaic_current_num_banks * 0x1000);
+			StateSav_SaveINT_Ctx(inst, &mosaic_curbank, 1);
+			StateSav_SaveUBYTE_Ctx(inst, mosaic_ram, mosaic_current_num_banks * 0x1000);
 		}
 	}
 
 	/* Save amount of base RAM in kilobytes. */
 	temp = MEMORY_ram_size > 64 ? 64 : MEMORY_ram_size;
-	StateSav_SaveINT(&temp, 1);
+	StateSav_SaveINT_Ctx(inst, &temp, 1);
 	STATESAV_TAG(base_ram);
-	StateSav_SaveUBYTE(&MEMORY_mem[0], 65536);
+	StateSav_SaveUBYTE_Ctx(inst, &MEMORY_mem[0], 65536);
 	STATESAV_TAG(base_ram_attrib);
 #ifndef PAGED_ATTRIB
-	StateSav_SaveUBYTE(&MEMORY_attrib[0], 65536);
+	StateSav_SaveUBYTE_Ctx(inst, &MEMORY_attrib[0], 65536);
 #else
 	{
-		/* I assume here that consecutive calls to StateSav_SaveUBYTE()
+		/* I assume here that consecutive calls to StateSav_SaveUBYTE_Ctx(inst, )
 		   are equivalent to a single call with all the values
-		   (i.e. StateSav_SaveUBYTE() doesn't write any headers). */
+		   (i.e. StateSav_SaveUBYTE_Ctx(inst, ) doesn't write any headers). */
 		UBYTE attrib_page[256];
 		int i;
 		for (i = 0; i < 256; i++) {
@@ -404,49 +404,49 @@ void MEMORY_StateSaveCtx(Atari800_Instance *inst, UBYTE SaveVerbose)
 			else {
 				memset(attrib_page, MEMORY_HARDWARE, 256);
 			}
-			StateSav_SaveUBYTE(&attrib_page[0], 256);
+			StateSav_SaveUBYTE_Ctx(inst, &attrib_page[0], 256);
 		}
 	}
 #endif
 
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 		if (SaveVerbose != 0)
-			StateSav_SaveUBYTE(&MEMORY_basic[0], 8192);
-		StateSav_SaveUBYTE(&under_cartA0BF[0], 8192);
+			StateSav_SaveUBYTE_Ctx(inst, &MEMORY_basic[0], 8192);
+		StateSav_SaveUBYTE_Ctx(inst, &under_cartA0BF[0], 8192);
 
 		if (SaveVerbose != 0)
-			StateSav_SaveUBYTE(&MEMORY_os[0], 16384);
-		StateSav_SaveUBYTE(&under_atarixl_os[0], 16384);
+			StateSav_SaveUBYTE_Ctx(inst, &MEMORY_os[0], 16384);
+		StateSav_SaveUBYTE_Ctx(inst, &under_atarixl_os[0], 16384);
 		if (SaveVerbose != 0)
-			StateSav_SaveUBYTE(MEMORY_xegame, 0x2000);
+			StateSav_SaveUBYTE_Ctx(inst, MEMORY_xegame, 0x2000);
 	}
 
 	/* Save amount of XE RAM in 16KB banks. */
 	temp = (MEMORY_ram_size - 64) / 16;
 	if (temp < 0)
 		temp = 0;
-	StateSav_SaveINT(&temp, 1);
+	StateSav_SaveINT_Ctx(inst, &temp, 1);
 	if (MEMORY_ram_size == MEMORY_RAM_320_RAMBO || MEMORY_ram_size == MEMORY_RAM_320_COMPY_SHOP) {
 		/* Save specific banking type. */
 		temp = MEMORY_ram_size - 320;
-		StateSav_SaveINT(&temp, 1);
+		StateSav_SaveINT_Ctx(inst, &temp, 1);
 	}
 	byte = PIA_PORTB | PIA_PORTB_mask;
-	StateSav_SaveUBYTE(&byte, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &byte, 1);
 
-	StateSav_SaveINT(&MEMORY_cartA0BF_enabled, 1);
+	StateSav_SaveINT_Ctx(inst, &MEMORY_cartA0BF_enabled, 1);
 
 	if (MEMORY_ram_size > 64) {
-		StateSav_SaveUBYTE(&atarixe_memory[0], atarixe_memory_size);
+		StateSav_SaveUBYTE_Ctx(inst, &atarixe_memory[0], atarixe_memory_size);
 		if (ANTIC_xe_ptr != NULL && MEMORY_selftest_enabled)
-			StateSav_SaveUBYTE(antic_bank_under_selftest, 0x800);
+			StateSav_SaveUBYTE_Ctx(inst, antic_bank_under_selftest, 0x800);
 	}
 
 	/* Simius XL/XE MapRAM expansion */
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE && MEMORY_ram_size > 20) {
-		StateSav_SaveINT(&MEMORY_enable_mapram, 1);
+		StateSav_SaveINT_Ctx(inst, &MEMORY_enable_mapram, 1);
 		if (MEMORY_enable_mapram) {
-			StateSav_SaveUBYTE( mapram_memory, 0x800 );
+			StateSav_SaveUBYTE_Ctx(inst,  mapram_memory, 0x800 );
 		}
 	}
 }
@@ -460,50 +460,50 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 
 	/* Axlon/Mosaic for 400/800 */
 	if (Atari800_machine_type == Atari800_MACHINE_800 && StateVersion >= 5) {
-		StateSav_ReadINT(&MEMORY_axlon_num_banks, 1);
+		StateSav_ReadINT_Ctx(inst, &MEMORY_axlon_num_banks, 1);
 		if (MEMORY_axlon_num_banks > 0){
-			StateSav_ReadINT(&axlon_curbank, 1);
+			StateSav_ReadINT_Ctx(inst, &axlon_curbank, 1);
 			if (StateVersion < 7) {
 				/* Read bank mask, then increase by 1 to get number of banks. */
-				StateSav_ReadINT(&MEMORY_axlon_num_banks, 1);
+				StateSav_ReadINT_Ctx(inst, &MEMORY_axlon_num_banks, 1);
 				++ MEMORY_axlon_num_banks;
 			}
-			StateSav_ReadINT(&MEMORY_axlon_0f_mirror, 1);
+			StateSav_ReadINT_Ctx(inst, &MEMORY_axlon_0f_mirror, 1);
 			if (StateVersion < 7) {
 				int temp;
 				/* Ignore saved RAM size - can be derived. */
-				StateSav_ReadINT(&temp, 1);
+				StateSav_ReadINT_Ctx(inst, &temp, 1);
 			}
 			alloc_axlon_memory();
-			StateSav_ReadUBYTE(axlon_ram, MEMORY_axlon_num_banks * 0x4000);
+			StateSav_ReadUBYTE_Ctx(inst, axlon_ram, MEMORY_axlon_num_banks * 0x4000);
 		}
-		StateSav_ReadINT(&MEMORY_mosaic_num_banks, 1);
+		StateSav_ReadINT_Ctx(inst, &MEMORY_mosaic_num_banks, 1);
 		if (MEMORY_mosaic_num_banks > 0) {
-			StateSav_ReadINT(&mosaic_curbank, 1);
+			StateSav_ReadINT_Ctx(inst, &mosaic_curbank, 1);
 			if (StateVersion < 7) {
 				int temp;
 				/* Read max bank number, then increase by 1 to get number of banks. */
-				StateSav_ReadINT(&MEMORY_mosaic_num_banks, 1);
+				StateSav_ReadINT_Ctx(inst, &MEMORY_mosaic_num_banks, 1);
 				++ MEMORY_mosaic_num_banks;
-				StateSav_ReadINT(&temp, 1); /* Ignore Mosaic RAM size - can be derived. */
+				StateSav_ReadINT_Ctx(inst, &temp, 1); /* Ignore Mosaic RAM size - can be derived. */
 			}
 			alloc_mosaic_memory();
-			StateSav_ReadUBYTE(mosaic_ram, mosaic_current_num_banks * 0x1000);
+			StateSav_ReadUBYTE_Ctx(inst, mosaic_ram, mosaic_current_num_banks * 0x1000);
 		}
 	}
 
 	if (StateVersion >= 7)
 		/* Read amount of base RAM in kilobytes. */
-		StateSav_ReadINT(&base_ram_kb, 1);
-	StateSav_ReadUBYTE(&MEMORY_mem[0], 65536);
+		StateSav_ReadINT_Ctx(inst, &base_ram_kb, 1);
+	StateSav_ReadUBYTE_Ctx(inst, &MEMORY_mem[0], 65536);
 #ifndef PAGED_ATTRIB
-	StateSav_ReadUBYTE(&MEMORY_attrib[0], 65536);
+	StateSav_ReadUBYTE_Ctx(inst, &MEMORY_attrib[0], 65536);
 #else
 	{
 		UBYTE attrib_page[256];
 		int i;
 		for (i = 0; i < 256; i++) {
-			StateSav_ReadUBYTE(&attrib_page[0], 256);
+			StateSav_ReadUBYTE_Ctx(inst, &attrib_page[0], 256);
 			/* note: 0x40 is intentional here:
 			   we want ROM on page 0xd1 if H: patches are enabled */
 			switch (attrib_page[0x40]) {
@@ -593,26 +593,26 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 		if (SaveVerbose)
-			StateSav_ReadUBYTE(&MEMORY_basic[0], 8192);
-		StateSav_ReadUBYTE(&under_cartA0BF[0], 8192);
+			StateSav_ReadUBYTE_Ctx(inst, &MEMORY_basic[0], 8192);
+		StateSav_ReadUBYTE_Ctx(inst, &under_cartA0BF[0], 8192);
 
 		if (SaveVerbose)
-			StateSav_ReadUBYTE(&MEMORY_os[0], 16384);
-		StateSav_ReadUBYTE(&under_atarixl_os[0], 16384);
+			StateSav_ReadUBYTE_Ctx(inst, &MEMORY_os[0], 16384);
+		StateSav_ReadUBYTE_Ctx(inst, &under_atarixl_os[0], 16384);
 		if (StateVersion >= 7 && SaveVerbose)
-			StateSav_ReadUBYTE(MEMORY_xegame, 0x2000);
+			StateSav_ReadUBYTE_Ctx(inst, MEMORY_xegame, 0x2000);
 	}
 
 	if (StateVersion >= 7) {
 		/* Read amount of XE RAM in 16KB banks. */
-		StateSav_ReadINT(&num_xe_banks, 1);
+		StateSav_ReadINT_Ctx(inst, &num_xe_banks, 1);
 		/* Compute value of MEMORY_ram_size. */
 		MEMORY_ram_size = base_ram_kb + num_xe_banks * 16;
 		if (MEMORY_ram_size == 320) {
 			/* There are 2 different memory mappings for 320 KB. */
 			/* In savestate version <= 6 this variable is read in PIA_StateRead. */
 			int xe_type;
-			StateSav_ReadINT(&xe_type, 1);
+			StateSav_ReadINT_Ctx(inst, &xe_type, 1);
 			MEMORY_ram_size += xe_type;
 		}
 		if (!MEMORY_SizeValid(MEMORY_ram_size)) {
@@ -621,7 +621,7 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 		}
 
 		/* Read PORTB and set variables that are based on it. */
-		StateSav_ReadUBYTE(&portb, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &portb, 1);
 		MEMORY_xe_bank = 0;
 		if (MEMORY_ram_size > 64 && (portb & 0x30) != 0x30) {
 			switch (MEMORY_ram_size) {
@@ -650,7 +650,7 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 		                          && !((portb & 0x30) != 0x30 && MEMORY_ram_size == MEMORY_RAM_320_COMPY_SHOP)
 		                          && !((portb & 0x10) == 0 && MEMORY_ram_size == 1088);
 
-		StateSav_ReadINT(&MEMORY_cartA0BF_enabled, 1);
+		StateSav_ReadINT_Ctx(inst, &MEMORY_cartA0BF_enabled, 1);
 		if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 			GTIA_TRIG[3] = MEMORY_cartA0BF_enabled;
 			if (MEMORY_cartA0BF_enabled == 0 && (GTIA_GRACTL & 4))
@@ -660,14 +660,14 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 	ANTIC_xe_ptr = NULL;
 	AllocXEMemory();
 	if (MEMORY_ram_size > 64) {
-		StateSav_ReadUBYTE(&atarixe_memory[0], atarixe_memory_size);
+		StateSav_ReadUBYTE_Ctx(inst, &atarixe_memory[0], atarixe_memory_size);
 		/* a hack that makes state files compatible with previous versions:
 		   for 130 XE there's written 192 KB of unused data */
 		if (MEMORY_ram_size == 128 && StateVersion <= 6) {
 			UBYTE buffer[256];
 			int i;
 			for (i = 0; i < 192 * 4; i++)
-				StateSav_ReadUBYTE(&buffer[0], 256);
+				StateSav_ReadUBYTE_Ctx(inst, &buffer[0], 256);
 		}
 		if (StateVersion >= 7 && (MEMORY_ram_size == 128 || MEMORY_ram_size == MEMORY_RAM_320_COMPY_SHOP)) {
 			switch (portb & 0x30) {
@@ -684,17 +684,17 @@ void MEMORY_StateReadCtx(Atari800_Instance *inst, UBYTE SaveVerbose, UBYTE State
 
 			if (ANTIC_xe_ptr != NULL && MEMORY_selftest_enabled)
 				/* Also read ANTIC-visible memory shadowed by Self Test. */
-				StateSav_ReadUBYTE(antic_bank_under_selftest, 0x800);
+				StateSav_ReadUBYTE_Ctx(inst, antic_bank_under_selftest, 0x800);
 
 		}
 	}
 
 	/* Simius XL/XE MapRAM expansion */
 	if (StateVersion >= 7 && Atari800_machine_type == Atari800_MACHINE_XLXE && MEMORY_ram_size > 20) {
-		StateSav_ReadINT(&MEMORY_enable_mapram, 1);
+		StateSav_ReadINT_Ctx(inst, &MEMORY_enable_mapram, 1);
 		AllocMapRAM();
 		if (mapram_memory != NULL) {
-			StateSav_ReadUBYTE(mapram_memory, 0x800);
+			StateSav_ReadUBYTE_Ctx(inst, mapram_memory, 0x800);
 		}
 	}
 }

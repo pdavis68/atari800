@@ -343,32 +343,32 @@ void PBI_BB_Frame_Ctx(Atari800_Instance *inst)
 void PBI_BB_StateSave_Ctx(Atari800_Instance *inst)
 {
 	PBI_BB_PIN_CTX(inst);
-	StateSav_SaveINT(&PBI_BB_enabled, 1);
+	StateSav_SaveINT_Ctx(inst, &PBI_BB_enabled, 1);
 	if (PBI_BB_enabled) {
-		StateSav_SaveFNAME(bb_scsi_disk_filename);
-		StateSav_SaveFNAME(bb_rom_filename);
+		StateSav_SaveFNAME_Ctx(inst, bb_scsi_disk_filename);
+		StateSav_SaveFNAME_Ctx(inst, bb_rom_filename);
 
-		StateSav_SaveINT(&bb_ram_bank_offset, 1);
-		StateSav_SaveUBYTE(bb_ram, BB_RAM_SIZE);
-		StateSav_SaveUBYTE(&bb_rom_bank, 1);
-		StateSav_SaveINT(&bb_rom_high_bit, 1);
-		StateSav_SaveUBYTE(&bb_PCR, 1);
+		StateSav_SaveINT_Ctx(inst, &bb_ram_bank_offset, 1);
+		StateSav_SaveUBYTE_Ctx(inst, bb_ram, BB_RAM_SIZE);
+		StateSav_SaveUBYTE_Ctx(inst, &bb_rom_bank, 1);
+		StateSav_SaveINT_Ctx(inst, &bb_rom_high_bit, 1);
+		StateSav_SaveUBYTE_Ctx(inst, &bb_PCR, 1);
 	}
 }
 
 void PBI_BB_StateRead_Ctx(Atari800_Instance *inst)
 {
 	PBI_BB_PIN_CTX(inst);
-	StateSav_ReadINT(&PBI_BB_enabled, 1);
+	StateSav_ReadINT_Ctx(inst, &PBI_BB_enabled, 1);
 	if (PBI_BB_enabled) {
-		StateSav_ReadFNAME(bb_scsi_disk_filename);
-		StateSav_ReadFNAME(bb_rom_filename);
+		StateSav_ReadFNAME_Ctx(inst, bb_scsi_disk_filename);
+		StateSav_ReadFNAME_Ctx(inst, bb_rom_filename);
 		init_bb();
-		StateSav_ReadINT(&bb_ram_bank_offset, 1);
-		StateSav_ReadUBYTE(bb_ram, BB_RAM_SIZE);
-		StateSav_ReadUBYTE(&bb_rom_bank, 1);
-		StateSav_ReadINT(&bb_rom_high_bit, 1);
-		StateSav_ReadUBYTE(&bb_PCR, 1);
+		StateSav_ReadINT_Ctx(inst, &bb_ram_bank_offset, 1);
+		StateSav_ReadUBYTE_Ctx(inst, bb_ram, BB_RAM_SIZE);
+		StateSav_ReadUBYTE_Ctx(inst, &bb_rom_bank, 1);
+		StateSav_ReadINT_Ctx(inst, &bb_rom_high_bit, 1);
+		StateSav_ReadUBYTE_Ctx(inst, &bb_PCR, 1);
 	}
 }
 

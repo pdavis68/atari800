@@ -284,32 +284,32 @@ void PBI_MIO_D6PutByte_Ctx(Atari800_Instance *inst, UWORD addr, UBYTE byte)
 void PBI_MIO_StateSave_Ctx(Atari800_Instance *inst)
 {
 	PBI_MIO_PIN_CTX(inst);
-	StateSav_SaveINT(&PBI_MIO_enabled, 1);
+	StateSav_SaveINT_Ctx(inst, &PBI_MIO_enabled, 1);
 	if (PBI_MIO_enabled) {
-		StateSav_SaveFNAME(mio_scsi_disk_filename);
-		StateSav_SaveFNAME(mio_rom_filename);
-		StateSav_SaveINT(&mio_ram_size, 1);
+		StateSav_SaveFNAME_Ctx(inst, mio_scsi_disk_filename);
+		StateSav_SaveFNAME_Ctx(inst, mio_rom_filename);
+		StateSav_SaveINT_Ctx(inst, &mio_ram_size, 1);
 
-		StateSav_SaveINT(&mio_ram_bank_offset, 1);
-		StateSav_SaveUBYTE(mio_ram, mio_ram_size);
-		StateSav_SaveUBYTE(&mio_rom_bank, 1);
-		StateSav_SaveINT(&mio_ram_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &mio_ram_bank_offset, 1);
+		StateSav_SaveUBYTE_Ctx(inst, mio_ram, mio_ram_size);
+		StateSav_SaveUBYTE_Ctx(inst, &mio_rom_bank, 1);
+		StateSav_SaveINT_Ctx(inst, &mio_ram_enabled, 1);
 	}
 }
 
 void PBI_MIO_StateRead_Ctx(Atari800_Instance *inst)
 {
 	PBI_MIO_PIN_CTX(inst);
-	StateSav_ReadINT(&PBI_MIO_enabled, 1);
+	StateSav_ReadINT_Ctx(inst, &PBI_MIO_enabled, 1);
 	if (PBI_MIO_enabled) {
-		StateSav_ReadFNAME(mio_scsi_disk_filename);
-		StateSav_ReadFNAME(mio_rom_filename);
-		StateSav_ReadINT(&mio_ram_size, 1);
+		StateSav_ReadFNAME_Ctx(inst, mio_scsi_disk_filename);
+		StateSav_ReadFNAME_Ctx(inst, mio_rom_filename);
+		StateSav_ReadINT_Ctx(inst, &mio_ram_size, 1);
 		init_mio();
-		StateSav_ReadINT(&mio_ram_bank_offset, 1);
-		StateSav_ReadUBYTE(mio_ram, mio_ram_size);
-		StateSav_ReadUBYTE(&mio_rom_bank, 1);
-		StateSav_ReadINT(&mio_ram_enabled, 1);
+		StateSav_ReadINT_Ctx(inst, &mio_ram_bank_offset, 1);
+		StateSav_ReadUBYTE_Ctx(inst, mio_ram, mio_ram_size);
+		StateSav_ReadUBYTE_Ctx(inst, &mio_rom_bank, 1);
+		StateSav_ReadINT_Ctx(inst, &mio_ram_enabled, 1);
 	}
 }
 
