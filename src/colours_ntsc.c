@@ -33,7 +33,19 @@
 #include "log.h"
 #include "util.h"
 
-Colours_setup_t COLOURS_NTSC_setup;
+/* Per-instance context (Option C transitional pattern): the _Ctx entry
+   points pin the file-scope context below; the legacy state names are
+   re-pointed to the pinned instance's Colours_state_t. */
+static Atari800_Instance *NTI;
+static Colours_state_t *NT;
+
+#undef COLOURS_NTSC_setup
+#undef COLOURS_NTSC_external
+#define COLOURS_NTSC_setup    (NT->ntsc_setup)
+#define COLOURS_NTSC_external (NT->ntsc_external)
+
+#define COLOURS_NTSC_PIN_CTX(inst) \
+	do { NTI = (inst); NT = &NTI->colours; } while (0)
 
 /* NTSC-specific default setup. */
 static struct {
@@ -42,7 +54,6 @@ static struct {
 	26.8, /* color delay, chosen to match color names given in GTIA.PDF */
 };
 
-COLOURS_EXTERNAL_t COLOURS_NTSC_external = { "", FALSE, FALSE };
 
 /* NTSC colorburst angle in YIQ colorspace. Colorburst is at
  * 180 degrees in YUV - that is, a gold color. In YIQ, gold is at
@@ -161,8 +172,9 @@ static void UpdateYIQTable(double yiq_table[768], double start_angle, const doub
 		UpdateYIQTableFromGenerated(yiq_table, start_angle, start_saturation);
 }
 
-void COLOURS_NTSC_GetYIQ(double yiq_table[768], const double start_angle)
+void COLOURS_NTSC_GetYIQ_Ctx(Atari800_Instance *inst, double yiq_table[768], const double start_angle)
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	/* Set the generated palette's saturation to 0.0, because NTSC_FILTER
 	   applies the saturation setting internally. */
 	UpdateYIQTable(yiq_table, start_angle, 0.0);
@@ -200,27 +212,31 @@ static void YIQ2RGB(int colourtable[256], const double yiq_table[768])
 	}
 }
 
-void COLOURS_NTSC_Update(int colourtable[256])
+void COLOURS_NTSC_Update_Ctx(Atari800_Instance *inst, int colourtable[256])
 {
 	double yiq_table[768];
+	COLOURS_NTSC_PIN_CTX(inst);
 	UpdateYIQTable(yiq_table, colorburst_angle + COLOURS_NTSC_setup.hue * M_PI, COLOURS_NTSC_setup.saturation);
 	YIQ2RGB(colourtable, yiq_table);
 }
 
-void COLOURS_NTSC_RestoreDefaults(void)
+void COLOURS_NTSC_RestoreDefaults_Ctx(Atari800_Instance *inst)
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	COLOURS_NTSC_setup.color_delay = default_setup.color_delay;
 }
 
-Colours_preset_t COLOURS_NTSC_GetPreset(void)
+Colours_preset_t COLOURS_NTSC_GetPreset_Ctx(Atari800_Instance *inst)
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	if (Util_almostequal(COLOURS_NTSC_setup.color_delay, default_setup.color_delay, 0.001))
 		return COLOURS_PRESET_STANDARD;
 	return COLOURS_PRESET_CUSTOM;
 }
 
-int COLOURS_NTSC_ReadConfig(char *option, char *ptr)
+int COLOURS_NTSC_ReadConfig_Ctx(Atari800_Instance *inst, char *option, char *ptr)
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	if (strcmp(option, "COLOURS_NTSC_SATURATION") == 0)
 		return Util_sscandouble(ptr, &COLOURS_NTSC_setup.saturation);
 	else if (strcmp(option, "COLOURS_NTSC_CONTRAST") == 0)
@@ -245,8 +261,9 @@ int COLOURS_NTSC_ReadConfig(char *option, char *ptr)
 	return TRUE;
 }
 
-void COLOURS_NTSC_WriteConfig(FILE *fp)
+void COLOURS_NTSC_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	fprintf(fp, "COLOURS_NTSC_SATURATION=%g\n", COLOURS_NTSC_setup.saturation);
 	fprintf(fp, "COLOURS_NTSC_CONTRAST=%g\n", COLOURS_NTSC_setup.contrast);
 	fprintf(fp, "COLOURS_NTSC_BRIGHTNESS=%g\n", COLOURS_NTSC_setup.brightness);
@@ -258,8 +275,9 @@ void COLOURS_NTSC_WriteConfig(FILE *fp)
 	fprintf(fp, "COLOURS_NTSC_ADJUST_EXTERNAL_PALETTE=%d\n", COLOURS_NTSC_external.adjust);
 }
 
-int COLOURS_NTSC_Initialise(int *argc, char *argv[])
+int COLOURS_NTSC_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	COLOURS_NTSC_PIN_CTX(inst);
 	int i;
 	int j;
 

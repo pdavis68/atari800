@@ -29,10 +29,33 @@
 #include "atari_ntsc/atari_ntsc.h"
 #include "cfg.h"
 #include "colours_ntsc.h"
+#include "instance.h"
 #include "log.h"
 #include "util.h"
 
-atari_ntsc_setup_t FILTER_NTSC_setup;
+/* Per-instance context: pinned by FILTER_NTSC_PIN_CTX() at each entry point. */
+static Filter_ntsc_state_t *FN;
+static struct Atari800_Instance *FNi;
+
+#define FILTER_NTSC_PIN_CTX(inst) do { \
+	FN = &(inst)->filter_ntsc; \
+	FNi = (inst); \
+} while (0)
+
+/* Re-point the state aliases to this instance. */
+#undef FILTER_NTSC_setup
+#undef FILTER_NTSC_emu
+#define FILTER_NTSC_setup (FN->setup)
+#define FILTER_NTSC_emu   (FN->emu)
+
+/* Re-point the COLOURS_NTSC state aliases to this instance. */
+#undef COLOURS_NTSC_setup
+#undef COLOURS_NTSC_external
+#define COLOURS_NTSC_setup    (FNi->colours.ntsc_setup)
+#define COLOURS_NTSC_external (FNi->colours.ntsc_external)
+#undef COLOURS_NTSC_GetYIQ
+#define COLOURS_NTSC_GetYIQ(yiq_table, burst_phase) \
+	COLOURS_NTSC_GetYIQ_Ctx(FNi, (yiq_table), (burst_phase))
 
 static atari_ntsc_setup_t const * const presets[] = {
 	&atari_ntsc_composite,
@@ -48,8 +71,6 @@ static char const * const preset_cfg_strings[FILTER_NTSC_PRESET_SIZE] = {
 	"MONOCHROME"
 };
 
-atari_ntsc_t *FILTER_NTSC_emu = NULL;
-
 atari_ntsc_t *FILTER_NTSC_New(void)
 {
 	atari_ntsc_t *filter = (atari_ntsc_t*) Util_malloc(sizeof(atari_ntsc_t));
@@ -61,8 +82,9 @@ void FILTER_NTSC_Delete(atari_ntsc_t *filter)
 	free(filter);
 }
 
-void FILTER_NTSC_Update(atari_ntsc_t *filter)
+void FILTER_NTSC_Update_Ctx(struct Atari800_Instance *inst, atari_ntsc_t *filter)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	double yiq_table[768];
 
 	COLOURS_NTSC_GetYIQ(yiq_table, FILTER_NTSC_setup.burst_phase * M_PI);
@@ -93,13 +115,15 @@ void FILTER_NTSC_Update(atari_ntsc_t *filter)
 	atari_ntsc_init(filter, &FILTER_NTSC_setup);
 }
 
-void FILTER_NTSC_RestoreDefaults(void)
+void FILTER_NTSC_RestoreDefaults_Ctx(struct Atari800_Instance *inst)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	FILTER_NTSC_setup = atari_ntsc_composite;
 }
 
-void FILTER_NTSC_SetPreset(int preset)
+void FILTER_NTSC_SetPreset_Ctx(struct Atari800_Instance *inst, int preset)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	if (preset < FILTER_NTSC_PRESET_CUSTOM) {
 		FILTER_NTSC_setup = *presets[preset];
 
@@ -112,8 +136,9 @@ void FILTER_NTSC_SetPreset(int preset)
 	}
 }
 
-int FILTER_NTSC_GetPreset(void)
+int FILTER_NTSC_GetPreset_Ctx(struct Atari800_Instance *inst)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	int i;
 
 	for (i = 0; i < FILTER_NTSC_PRESET_SIZE; i ++) {
@@ -128,15 +153,16 @@ int FILTER_NTSC_GetPreset(void)
 		    Util_almostequal(COLOURS_NTSC_setup.contrast, presets[i]->contrast, 0.001) &&
 		    Util_almostequal(COLOURS_NTSC_setup.brightness, presets[i]->brightness, 0.001) &&
 		    Util_almostequal(COLOURS_NTSC_setup.gamma, presets[i]->gamma, 0.001))
-			return i; 
+			return i;
 	}
 	return FILTER_NTSC_PRESET_CUSTOM;
 }
 
-void FILTER_NTSC_NextPreset(void)
+void FILTER_NTSC_NextPreset_Ctx(struct Atari800_Instance *inst)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	int preset = FILTER_NTSC_GetPreset();
-	
+
 	if (preset == FILTER_NTSC_PRESET_CUSTOM)
 		preset = FILTER_NTSC_PRESET_COMPOSITE;
 	else
@@ -144,14 +170,16 @@ void FILTER_NTSC_NextPreset(void)
 	FILTER_NTSC_SetPreset(preset);
 }
 
-void FILTER_NTSC_PreInitialise(void)
+void FILTER_NTSC_PreInitialise_Ctx(struct Atari800_Instance *inst)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	/* atari_ntsc_composite acts as the default setup. */
 	FILTER_NTSC_setup = atari_ntsc_composite;
 }
 
-int FILTER_NTSC_ReadConfig(char *option, char *ptr)
+int FILTER_NTSC_ReadConfig_Ctx(struct Atari800_Instance *inst, char *option, char *ptr)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	if (strcmp(option, "FILTER_NTSC_SHARPNESS") == 0)
 		return Util_sscandouble(ptr, &FILTER_NTSC_setup.sharpness);
 	else if (strcmp(option, "FILTER_NTSC_RESOLUTION") == 0)
@@ -168,8 +196,9 @@ int FILTER_NTSC_ReadConfig(char *option, char *ptr)
 		return FALSE;
 }
 
-void FILTER_NTSC_WriteConfig(FILE *fp)
+void FILTER_NTSC_WriteConfig_Ctx(struct Atari800_Instance *inst, FILE *fp)
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	fprintf(fp, "FILTER_NTSC_SHARPNESS=%g\n", FILTER_NTSC_setup.sharpness);
 	fprintf(fp, "FILTER_NTSC_RESOLUTION=%g\n", FILTER_NTSC_setup.resolution);
 	fprintf(fp, "FILTER_NTSC_ARTIFACTS=%g\n", FILTER_NTSC_setup.artifacts);
@@ -178,15 +207,16 @@ void FILTER_NTSC_WriteConfig(FILE *fp)
 	fprintf(fp, "FILTER_NTSC_BURST_PHASE=%g\n", FILTER_NTSC_setup.burst_phase);
 }
 
-int FILTER_NTSC_Initialise(int *argc, char *argv[])
+int FILTER_NTSC_Initialise_Ctx(struct Atari800_Instance *inst, int *argc, char *argv[])
 {
+	FILTER_NTSC_PIN_CTX(inst);
 	int i;
 	int j;
 
 	for (i = j = 1; i < *argc; i++) {
 		int i_a = (i + 1 < *argc);		/* is argument available? */
 		int a_m = FALSE;			/* error, argument missing! */
-		
+
 		if (strcmp(argv[i], "-ntsc-sharpness") == 0) {
 			if (i_a)
 				FILTER_NTSC_setup.sharpness = atof(argv[++i]);

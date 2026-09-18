@@ -30,6 +30,7 @@
 #include "antic.h"
 #include "atari.h"
 #include "cfg.h"
+#include "instance.h"
 #include "log.h"
 #ifdef PAL_BLENDING
 #include "pal_blending.h"
@@ -39,10 +40,29 @@
 #include "videomode.h"
 #endif /* SUPPORTS_CHANGE_VIDEOMODE */
 
-ARTIFACT_t ARTIFACT_mode = ARTIFACT_NONE;
+/* Per-instance context: pinned by ARTIFACT_PIN_CTX() at each entry point. */
+static Artifact_state_t *AR;
+static struct Atari800_Instance *ARi;
 
-static ARTIFACT_t mode_ntsc = ARTIFACT_NONE;
-static ARTIFACT_t mode_pal = ARTIFACT_NONE;
+#define ARTIFACT_PIN_CTX(inst) do { \
+	AR = &(inst)->artifact; \
+	ARi = (inst); \
+} while (0)
+
+/* Re-point the ANTIC state aliases to this instance. */
+#undef ANTIC_artif_mode
+#undef ANTIC_artif_new
+#undef ANTIC_pal_blending
+#undef ANTIC_UpdateArtifacting
+#define ANTIC_artif_mode   (ARi->antic.artif_mode)
+#define ANTIC_artif_new    (ARi->antic.artif_new)
+#define ANTIC_pal_blending (ARi->antic.pal_blending)
+#define ANTIC_UpdateArtifacting() ANTIC_UpdateArtifacting_Ctx(ARi)
+
+#undef ARTIFACT_mode
+#define ARTIFACT_mode   (AR->mode)
+#define mode_ntsc       (AR->mode_ntsc)
+#define mode_pal        (AR->mode_pal)
 
 static char const * const mode_cfg_strings[ARTIFACT_SIZE] = {
 	"NONE",
@@ -113,8 +133,9 @@ static void UpdateFromTVMode(int tv_mode)
 		ARTIFACT_mode = mode_pal;
 }
 
-void ARTIFACT_Set(ARTIFACT_t mode)
+void ARTIFACT_Set_Ctx(struct Atari800_Instance *inst, ARTIFACT_t mode)
 {
+	ARTIFACT_PIN_CTX(inst);
 	ARTIFACT_t old_effect = ARTIFACT_mode;
 	ARTIFACT_mode = mode;
 	if (Atari800_tv_mode == Atari800_TV_NTSC)
@@ -124,15 +145,17 @@ void ARTIFACT_Set(ARTIFACT_t mode)
 	UpdateMode(old_effect, TRUE);
 }
 
-void ARTIFACT_SetTVMode(int tv_mode)
+void ARTIFACT_SetTVMode_Ctx(struct Atari800_Instance *inst, int tv_mode)
 {
+	ARTIFACT_PIN_CTX(inst);
 	ARTIFACT_t old_mode = ARTIFACT_mode;
 	UpdateFromTVMode(tv_mode);
 	UpdateMode(old_mode, TRUE);
 }
 
-int ARTIFACT_ReadConfig(char *option, char *ptr)
+int ARTIFACT_ReadConfig_Ctx(struct Atari800_Instance *inst, char *option, char *ptr)
 {
+	ARTIFACT_PIN_CTX(inst);
 	if (strcmp(option, "ARTIFACT_NTSC") == 0) {
 		int i = CFG_MatchTextParameter(ptr, mode_cfg_strings, ARTIFACT_SIZE);
 		if (i < 0)
@@ -156,15 +179,17 @@ int ARTIFACT_ReadConfig(char *option, char *ptr)
 	return TRUE;
 }
 
-void ARTIFACT_WriteConfig(FILE *fp)
+void ARTIFACT_WriteConfig_Ctx(struct Atari800_Instance *inst, FILE *fp)
 {
+	ARTIFACT_PIN_CTX(inst);
 	fprintf(fp, "ARTIFACT_NTSC=%s\n", mode_cfg_strings[mode_ntsc]);
 	fprintf(fp, "ARTIFACT_PAL=%s\n", mode_cfg_strings[mode_pal]);
 	fprintf(fp, "ARTIFACT_NTSC_MODE=%i\n", ANTIC_artif_mode);
 }
 
-int ARTIFACT_Initialise(int *argc, char *argv[])
+int ARTIFACT_Initialise_Ctx(struct Atari800_Instance *inst, int *argc, char *argv[])
 {
+	ARTIFACT_PIN_CTX(inst);
 	int i;
 	int j;
 

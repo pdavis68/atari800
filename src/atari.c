@@ -162,26 +162,20 @@
 #define NETSIO_STARTUP_WAIT_POLL_MS 10
 #endif /* NETSIO */
 
-int Atari800_machine_type = Atari800_MACHINE_XLXE;
-
-int Atari800_builtin_basic = TRUE;
-int Atari800_keyboard_leds = FALSE;
-int Atari800_f_keys = FALSE;
-int Atari800_jumper;
-int Atari800_builtin_game = FALSE;
-int Atari800_keyboard_detached = FALSE;
-
-int Atari800_tv_mode = Atari800_TV_PAL;
-int Atari800_disable_basic = TRUE;
-
-int Atari800_os_version = -1;
-
 int verbose = FALSE;
 
 /* Transitional default instance (see instance.h). Statically allocated so the
    legacy memory globals (which alias its memory) are always valid, even before
    Atari800_Initialise() runs. */
 static Atari800_Instance default_instance_storage = {
+	/* Top-level configuration: preserve the old file-scope static
+	   initialisers (the rest is zero-init, matching the old globals). */
+	.machine_type = Atari800_MACHINE_XLXE,
+	.builtin_basic = TRUE,
+	.tv_mode = Atari800_TV_PAL,
+	.disable_basic = TRUE,
+	.os_version = -1,
+	.refresh_rate = 1,
 	.memory = {
 		.ram_size = 64,
 		.mosaic_curbank = 0x3f,
@@ -295,6 +289,151 @@ static Atari800_Instance default_instance_storage = {
 };
 Atari800_Instance *Atari800_default = &default_instance_storage;
 
+/* --------------------------------------------------------------------- */
+/* Context pinning (Option C, docs/refactor-checklist.md §4.4).           */
+/*                                                                        */
+/* The _Ctx functions below operate on the instance passed to them. The   */
+/* legacy global names — this module's own state (aliased through atari.h */
+/* to the default instance) and the chip/peripheral aliases pulled in     */
+/* from the module headers — are #undef'ed and re-pointed to the pinned   */
+/* instance `AI`. Process-level entry points (Atari800_Initialise/Exit/   */
+/* ErrExit) pin AI to the default instance.                               */
+static Atari800_Instance *AI = &default_instance_storage;
+
+#define ATARI_PIN_CTX(inst) ((AI) = (inst))
+
+/* This module's own state (aliases from atari.h). */
+#undef Atari800_machine_type
+#define Atari800_machine_type (AI->machine_type)
+#undef Atari800_builtin_basic
+#define Atari800_builtin_basic (AI->builtin_basic)
+#undef Atari800_keyboard_leds
+#define Atari800_keyboard_leds (AI->keyboard_leds)
+#undef Atari800_f_keys
+#define Atari800_f_keys (AI->f_keys)
+#undef Atari800_jumper
+#define Atari800_jumper (AI->jumper)
+#undef Atari800_builtin_game
+#define Atari800_builtin_game (AI->builtin_game)
+#undef Atari800_keyboard_detached
+#define Atari800_keyboard_detached (AI->keyboard_detached)
+#undef Atari800_tv_mode
+#define Atari800_tv_mode (AI->tv_mode)
+#undef Atari800_disable_basic
+#define Atari800_disable_basic (AI->disable_basic)
+#undef Atari800_os_version
+#define Atari800_os_version (AI->os_version)
+#undef Atari800_display_screen
+#define Atari800_display_screen (AI->display_screen)
+#undef Atari800_nframes
+#define Atari800_nframes (AI->nframes)
+#undef Atari800_refresh_rate
+#define Atari800_refresh_rate (AI->refresh_rate)
+#undef Atari800_collisions_in_skipped_frames
+#define Atari800_collisions_in_skipped_frames (AI->collisions_in_skipped_frames)
+#undef Atari800_turbo
+#define Atari800_turbo (AI->turbo)
+#undef Atari800_turbo_speed
+#define Atari800_turbo_speed (AI->turbo_speed)
+#undef Atari800_start_in_monitor
+#define Atari800_start_in_monitor (AI->start_in_monitor)
+#undef Atari800_auto_frameskip
+#define Atari800_auto_frameskip (AI->auto_frameskip)
+
+/* Memory state used by the _Ctx bodies. */
+#undef MEMORY_ram_size
+#define MEMORY_ram_size (AI->memory.ram_size)
+#undef MEMORY_xe_bank
+#define MEMORY_xe_bank (AI->memory.xe_bank)
+#undef MEMORY_have_basic
+#define MEMORY_have_basic (AI->memory.have_basic)
+#undef MEMORY_os
+#define MEMORY_os (AI->memory.os)
+#undef MEMORY_basic
+#define MEMORY_basic (AI->memory.basic)
+#undef MEMORY_xegame
+#define MEMORY_xegame (AI->memory.xegame)
+#undef MEMORY_axlon_num_banks
+#define MEMORY_axlon_num_banks (AI->memory.axlon_num_banks)
+#undef MEMORY_dPutByte
+#define MEMORY_dPutByte(x, y) MEMORY_dPutByteCtx(&AI->memory, (x), (y))
+#undef MEMORY_PutByte
+#define MEMORY_PutByte(addr, byte) MEMORY_PutByteCtx(&AI->memory, (addr), (byte))
+#undef MEMORY_InitialiseMachine
+#define MEMORY_InitialiseMachine() MEMORY_InitialiseMachineCtx(AI)
+
+/* Chip state used by the _Ctx bodies. */
+#undef GTIA_TRIG
+#define GTIA_TRIG (AI->gtia.TRIG)
+#undef GTIA_TRIG_latch
+#define GTIA_TRIG_latch (AI->gtia.TRIG_latch)
+#undef GTIA_GRACTL
+#define GTIA_GRACTL (AI->gtia.GRACTL)
+#undef GTIA_consol_override
+#define GTIA_consol_override (AI->gtia.consol_override)
+#undef GTIA_Frame
+#define GTIA_Frame() GTIA_Frame_Ctx(AI)
+
+#undef ANTIC_NMIEN
+#define ANTIC_NMIEN (AI->antic.NMIEN)
+#undef ANTIC_NMIST
+#define ANTIC_NMIST (AI->antic.NMIST)
+#undef ANTIC_Reset
+#define ANTIC_Reset() ANTIC_Reset_Ctx(AI)
+#undef ANTIC_Frame
+#define ANTIC_Frame(draw_display) ANTIC_Frame_Ctx(AI, draw_display)
+
+#undef POKEY_POT_input
+#define POKEY_POT_input (AI->pokey.POT_input)
+#undef POKEY_Frame
+#define POKEY_Frame() POKEY_Frame_Ctx(AI)
+
+/* Peripherals used by the _Ctx bodies. */
+#undef PIA_Reset
+#define PIA_Reset() PIA_Reset_Ctx(AI)
+#undef PBI_Reset
+#define PBI_Reset() PBI_Reset_Ctx(AI)
+#undef CARTRIDGE_ColdStart
+#define CARTRIDGE_ColdStart() CARTRIDGE_ColdStart_Ctx(AI)
+#undef ESC_ClearAll
+#define ESC_ClearAll() ESC_ClearAll_Ctx(AI)
+#undef Devices_UpdatePatches
+#define Devices_UpdatePatches() Devices_UpdatePatches_Ctx(AI)
+#undef Devices_Frame
+#define Devices_Frame() Devices_Frame_Ctx(AI)
+#undef Colours_PreInitialise
+#define Colours_PreInitialise() Colours_PreInitialise_Ctx(AI)
+#undef Colours_SetVideoSystem
+#define Colours_SetVideoSystem(mode) Colours_SetVideoSystem_Ctx(AI, (mode))
+#undef ARTIFACT_SetTVMode
+#define ARTIFACT_SetTVMode(mode) ARTIFACT_SetTVMode_Ctx(AI, (mode))
+#undef AF80_Reset
+#define AF80_Reset() AF80_Reset_Ctx(AI)
+#undef AF80_InsertRightCartridge
+#define AF80_InsertRightCartridge() AF80_InsertRightCartridge_Ctx(AI)
+#undef BIT3_Reset
+#define BIT3_Reset() BIT3_Reset_Ctx(AI)
+#undef PBI_BB_Frame
+#define PBI_BB_Frame() PBI_BB_Frame_Ctx(AI)
+#undef INPUT_key_code
+#define INPUT_key_code (AI->input.key_code)
+#undef INPUT_Frame
+#define INPUT_Frame() INPUT_Frame_Ctx(AI)
+#undef INPUT_DrawMousePointer
+#define INPUT_DrawMousePointer() INPUT_DrawMousePointer_Ctx(AI)
+#undef Screen_DrawAtariSpeed
+#define Screen_DrawAtariSpeed(t) Screen_DrawAtariSpeed_Ctx(AI, (t))
+#undef Screen_DrawDiskLED
+#define Screen_DrawDiskLED() Screen_DrawDiskLED_Ctx(AI)
+#undef Screen_Draw1200LED
+#define Screen_Draw1200LED() Screen_Draw1200LED_Ctx(AI)
+#undef Screen_DrawStatusText
+#define Screen_DrawStatusText() Screen_DrawStatusText_Ctx(AI)
+#undef Screen_DrawMultimediaStats
+#define Screen_DrawMultimediaStats() Screen_DrawMultimediaStats_Ctx(AI)
+#undef Screen_SaveNextScreenshot
+#define Screen_SaveNextScreenshot(i) Screen_SaveNextScreenshot_Ctx(AI, (i))
+
 Atari800_Instance *Atari800_NewInstance(void)
 {
 	Atari800_Instance *inst = (Atari800_Instance *) calloc(1, sizeof(Atari800_Instance));
@@ -314,18 +453,6 @@ void Atari800_FreeInstance(Atari800_Instance *inst)
 		free(inst);
 }
 
-int Atari800_display_screen = FALSE;
-int Atari800_nframes = 0;
-int Atari800_refresh_rate = 1;
-int Atari800_collisions_in_skipped_frames = FALSE;
-int Atari800_turbo = FALSE;
-int Atari800_turbo_speed = 0; /* percentage speed or 0 for max turbo */
-int Atari800_start_in_monitor = FALSE;
-int Atari800_auto_frameskip = FALSE;
-
-#ifdef BENCHMARK
-static double benchmark_start_time;
-#endif
 
 #ifdef HAVE_DOWNLOAD
 static char dl_dir[FILENAME_MAX] = "";
@@ -343,8 +470,9 @@ static void sigint_handler(int num)
 }
 #endif
 
-void Atari800_SetMachineType(int type)
+void Atari800_SetMachineType_Ctx(Atari800_Instance *inst, int type)
 {
+	ATARI_PIN_CTX(inst);
 	Atari800_machine_type = type;
 	if (Atari800_machine_type != Atari800_MACHINE_XLXE) {
 		Atari800_builtin_basic = FALSE;
@@ -356,22 +484,25 @@ void Atari800_SetMachineType(int type)
 	}
 }
 
-void Atari800_UpdateKeyboardDetached(void)
+void Atari800_UpdateKeyboardDetached_Ctx(Atari800_Instance *inst)
 {
+	ATARI_PIN_CTX(inst);
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 		GTIA_TRIG[2] = !Atari800_keyboard_detached;
 		if (Atari800_keyboard_detached && (GTIA_GRACTL & 4))
 				GTIA_TRIG_latch[2] = 0;
 	}
 }
-void Atari800_UpdateJumper(void)
+void Atari800_UpdateJumper_Ctx(Atari800_Instance *inst)
 {
+	ATARI_PIN_CTX(inst);
 	if (Atari800_machine_type == Atari800_MACHINE_XLXE)
 			POKEY_POT_input[4] = Atari800_jumper ? 0 : 228;
 }
 
-void Atari800_Warmstart(void)
+void Atari800_Warmstart_Ctx(Atari800_Instance *inst)
 {
+	ATARI_PIN_CTX(inst);
 	if (Atari800_machine_type == Atari800_MACHINE_800) {
 		/* A real Axlon homebanks on reset */
 		/* XXX: what does Mosaic do? */
@@ -379,7 +510,7 @@ void Atari800_Warmstart(void)
 		/* RESET key in 400/800 does not reset chips,
 		   but only generates RNMI interrupt */
 		ANTIC_NMIST = 0x3f;
-		CPU_NMI(Atari800_default);
+		CPU_NMI(inst);
 	}
 	else {
 		PBI_Reset();
@@ -387,7 +518,7 @@ void Atari800_Warmstart(void)
 		ANTIC_Reset();
 		/* CPU_Reset() must be after PIA_Reset(),
 		   because Reset routine vector must be read from OS ROM */
-		CPU_Reset(Atari800_default);
+		CPU_Reset(inst);
 		/* note: POKEY and GTIA have no Reset pin */
 	}
 #ifdef __PLUS
@@ -399,14 +530,15 @@ void Atari800_Warmstart(void)
 #endif /* NETSIO */
 }
 
-void Atari800_Coldstart(void)
+void Atari800_Coldstart_Ctx(Atari800_Instance *inst)
 {
+	ATARI_PIN_CTX(inst);
 	PBI_Reset();
 	PIA_Reset();
 	ANTIC_Reset();
 	/* CPU_Reset() must be after PIA_Reset(),
 	   because Reset routine vector must be read from OS ROM */
-	CPU_Reset(Atari800_default);
+	CPU_Reset(inst);
 	/* note: POKEY and GTIA have no Reset pin */
 #ifdef __PLUS
 	HandleResetEvent();
@@ -454,8 +586,9 @@ int Atari800_LoadImage(const char *filename, UBYTE *buffer, int nbytes)
 	return TRUE;
 }
 
-static int load_roms(void)
+static int load_roms(Atari800_Instance *inst)
 {
+	ATARI_PIN_CTX(inst);
 	int basic_ver, xegame_ver;
 	SYSROM_ChooseROMs(Atari800_machine_type, MEMORY_ram_size, Atari800_tv_mode, &Atari800_os_version, &basic_ver, &xegame_ver);
 	if (Atari800_os_version == -1
@@ -487,13 +620,14 @@ static int load_roms(void)
 	return TRUE;
 }
 
-int Atari800_InitialiseMachine(void)
+int Atari800_InitialiseMachine_Ctx(Atari800_Instance *inst)
 {
 	int have_roms;
+	ATARI_PIN_CTX(inst);
 	ESC_ClearAll();
-	have_roms = load_roms();
-	Atari800_UpdateKeyboardDetached();
-	Atari800_UpdateJumper();
+	have_roms = load_roms(inst);
+	Atari800_UpdateKeyboardDetached_Ctx(inst);
+	Atari800_UpdateJumper_Ctx(inst);
 	MEMORY_InitialiseMachine();
 	Devices_UpdatePatches();
 	return have_roms;
@@ -1216,7 +1350,7 @@ int Atari800_Initialise(int *argc, char *argv[])
 #endif /* __PLUS */
 
 #ifdef BENCHMARK
-	benchmark_start_time = Util_time();
+	AI->benchmark_start_time = Util_time();
 #endif
 
 #ifdef SOUND
@@ -1267,6 +1401,7 @@ UNALIGNED_STAT_DEF(memory_write_aligned_word_stat)
 
 int Atari800_Exit(int run_monitor)
 {
+	ATARI_PIN_CTX(Atari800_default);
 	int restart;
 
 #ifdef __PLUS
@@ -1360,6 +1495,7 @@ int Atari800_Exit(int run_monitor)
 
 void Atari800_ErrExit(void)
 {
+	ATARI_PIN_CTX(Atari800_default);
 	CFG_save_on_exit = FALSE; /* avoid saving the config */
 	Atari800_Exit(FALSE);
 }
@@ -1368,23 +1504,21 @@ void Atari800_ErrExit(void)
 #ifndef LIBATARI800
 static void autoframeskip(double curtime, double lasttime)
 {
-	static int afs_lastframe = 0, afs_discard = 0;
-	static double afs_lasttime = 0.0, afs_sleeptime = 0.0;
 	double afs_speedpct, afs_sleeppct, afs_ataritime, afs_realtime;
 
 	if (lasttime - curtime > 0)
-		afs_sleeptime += lasttime - curtime;
-	if (curtime - afs_lasttime > 0.5) {
-		afs_ataritime = ((double) (Atari800_nframes - afs_lastframe)) /
+		AI->afs_sleeptime += lasttime - curtime;
+	if (curtime - AI->afs_lasttime > 0.5) {
+		afs_ataritime = ((double) (Atari800_nframes - AI->afs_lastframe)) /
 						((double) (Atari800_tv_mode == Atari800_TV_PAL ? Atari800_FPS_PAL : Atari800_FPS_NTSC));
-		afs_realtime = curtime - afs_lasttime;
+		afs_realtime = curtime - AI->afs_lasttime;
 		afs_speedpct = 100.0 * afs_ataritime / afs_realtime;
-		afs_sleeppct = 100.0 * afs_sleeptime / afs_realtime;
+		afs_sleeppct = 100.0 * AI->afs_sleeptime / afs_realtime;
 
-		if (afs_discard < 3 && (afs_realtime > 2.0 * afs_ataritime)) {
-			afs_discard++;
+		if (AI->afs_discard < 3 && (afs_realtime > 2.0 * afs_ataritime)) {
+			AI->afs_discard++;
 		} else {
-			afs_discard = 0;
+			AI->afs_discard = 0;
 			if (afs_speedpct < 90.0) {
 				if (Atari800_refresh_rate < 4)
 					Atari800_refresh_rate++;
@@ -1394,18 +1528,18 @@ static void autoframeskip(double curtime, double lasttime)
 			}
 		}
 
-		afs_sleeptime = 0.0;
-		afs_lastframe = Atari800_nframes;
-		afs_lasttime = Util_time();
+		AI->afs_sleeptime = 0.0;
+		AI->afs_lastframe = Atari800_nframes;
+		AI->afs_lasttime = Util_time();
 	}
 }
 
-void Atari800_Sync(void)
+void Atari800_Sync_Ctx(Atari800_Instance *inst)
 {
-	static double lasttime = 0;
 	double deltatime = 1.0 / ((Atari800_tv_mode == Atari800_TV_PAL) ? Atari800_FPS_PAL : Atari800_FPS_NTSC);
 	double curtime;
 
+	ATARI_PIN_CTX(inst);
 #if defined(SOUND) && !defined(__PLUS)
 	deltatime *= Sound_AdjustSpeed();
 #endif
@@ -1416,15 +1550,15 @@ void Atari800_Sync(void)
 	if (Atari800_turbo && Atari800_turbo_speed > 0) {
 		deltatime /= Atari800_turbo_speed / 100.0;
 	}
-	lasttime += deltatime;
+	AI->sync_lasttime += deltatime;
 	curtime = Util_time();
 	if (Atari800_auto_frameskip)
-		autoframeskip(curtime, lasttime);
-	Util_sleep(lasttime - curtime);
+		autoframeskip(curtime, AI->sync_lasttime);
+	Util_sleep(AI->sync_lasttime - curtime);
 	curtime = Util_time();
 
-	if ((lasttime + deltatime) < curtime)
-		lasttime = curtime;
+	if ((AI->sync_lasttime + deltatime) < curtime)
+		AI->sync_lasttime = curtime;
 }
 
 #if defined(BASIC) || defined(VERY_SLOW) || defined(CURSES_BASIC)
@@ -1579,10 +1713,10 @@ static void basic_frame(void)
 #endif /* defined(BASIC) || defined(VERY_SLOW) || defined(CURSES_BASIC) */
 #endif /* LIBATARI800 */
 
-void Atari800_Frame(void)
+void Atari800_Frame_Ctx(Atari800_Instance *inst)
 {
 #ifndef BASIC
-	static int refresh_counter = 0;
+	ATARI_PIN_CTX(inst);
 
 #ifdef CTRL_C_HANDLER
 	if (sigint_flag) {
@@ -1594,10 +1728,10 @@ void Atari800_Frame(void)
 
 	switch (INPUT_key_code) {
 	case AKEY_COLDSTART:
-		Atari800_Coldstart();
+		Atari800_Coldstart_Ctx(inst);
 		break;
 	case AKEY_WARMSTART:
-		Atari800_Warmstart();
+		Atari800_Warmstart_Ctx(inst);
 		break;
 	case AKEY_EXIT:
 		Atari800_Exit(FALSE);
@@ -1647,8 +1781,8 @@ void Atari800_Frame(void)
 #ifdef BASIC
 	basic_frame();
 #else /* BASIC */
-	if (++refresh_counter >= Atari800_refresh_rate) {
-		refresh_counter = 0;
+	if (++AI->refresh_counter >= Atari800_refresh_rate) {
+		AI->refresh_counter = 0;
 #ifdef USE_CURSES
 		curses_clear_screen();
 #endif
@@ -1694,7 +1828,7 @@ void Atari800_Frame(void)
 #ifndef LIBATARI800
 #ifdef BENCHMARK
 	if (Atari800_nframes >= BENCHMARK) {
-		double benchmark_time = Util_time() - benchmark_start_time;
+		double benchmark_time = Util_time() - AI->benchmark_start_time;
 		Atari800_ErrExit();
 		printf("%d frames emulated in %.2f seconds\n", BENCHMARK, benchmark_time);
 		exit(0);
@@ -1707,27 +1841,27 @@ void Atari800_Frame(void)
 		if (Atari800_turbo && Atari800_turbo_speed == 0) {
 			/* No need to draw Atari frames with frequency higher than display
 			   refresh rate. */
-			static double last_display_screen_time = 0.0;
-			static double const limit = 1.0 / 60.0; /* refresh every 1/60 s */
+			double const limit = 1.0 / 60.0; /* refresh every 1/60 s */
 			/* TODO Actually sync the limit with the display refresh rate. */
 			double cur_time = Util_time();
-			if (cur_time - last_display_screen_time > limit)
-				last_display_screen_time = cur_time;
+			if (cur_time - AI->last_display_screen_time > limit)
+				AI->last_display_screen_time = cur_time;
 			else
 				Atari800_display_screen = FALSE;
 		}
 		else
-			Atari800_Sync();
-#endif /* BENCHMARK */
-#endif /* LIBATARI800 */
-}
-
-#endif /* __PLUS */
-
-#ifndef BASIC
-
-void Atari800_StateSave(void)
-{
+			Atari800_Sync_Ctx(inst);
+	#endif /* BENCHMARK */
+	#endif /* LIBATARI800 */
+	}
+	
+	#endif /* __PLUS */
+	
+	#ifndef BASIC
+	
+	void Atari800_StateSave_Ctx(Atari800_Instance *inst)
+	{
+		ATARI_PIN_CTX(inst);
 	UBYTE temp = Atari800_tv_mode == Atari800_TV_PAL;
 	StateSav_SaveUBYTE(&temp, 1);
 	temp = Atari800_machine_type;
@@ -1748,18 +1882,19 @@ void Atari800_StateSave(void)
 	}
 }
 
-void Atari800_StateRead(UBYTE version)
+void Atari800_StateRead_Ctx(Atari800_Instance *inst, UBYTE version)
 {
+	ATARI_PIN_CTX(inst);
 	if (version >= 7) {
 		UBYTE temp;
 		StateSav_ReadUBYTE(&temp, 1);
-		Atari800_SetTVMode(temp ? Atari800_TV_PAL : Atari800_TV_NTSC);
+		Atari800_SetTVMode_Ctx(inst, temp ? Atari800_TV_PAL : Atari800_TV_NTSC);
 		StateSav_ReadUBYTE(&temp, 1);
 		if (temp >= Atari800_MACHINE_SIZE) {
 			temp = Atari800_MACHINE_XLXE;
 			Log_print("Warning: Bad machine type read in from state save, defaulting to XL/XE");
 		}
-		Atari800_SetMachineType(temp);
+		Atari800_SetMachineType_Ctx(inst, temp);
 		if (Atari800_machine_type == Atari800_MACHINE_XLXE) {
 			StateSav_ReadUBYTE(&temp, 1);
 			Atari800_builtin_basic = temp != 0;
@@ -1769,12 +1904,12 @@ void Atari800_StateRead(UBYTE version)
 			Atari800_f_keys = temp != 0;
 			StateSav_ReadUBYTE(&temp, 1);
 			Atari800_jumper = temp != 0;
-			Atari800_UpdateJumper();
+			Atari800_UpdateJumper_Ctx(inst);
 			StateSav_ReadUBYTE(&temp, 1);
 			Atari800_builtin_game = temp != 0;
 			StateSav_ReadUBYTE(&temp, 1);
 			Atari800_keyboard_detached = temp != 0;
-			Atari800_UpdateKeyboardDetached();
+			Atari800_UpdateKeyboardDetached_Ctx(inst);
 		}
 	}
 	else { /* savestate from version 2.2.1 or earlier */
@@ -1788,7 +1923,7 @@ void Atari800_StateRead(UBYTE version)
 
 		StateSav_ReadUBYTE(&temp, 1);
 		new_tv_mode = (temp == 0) ? Atari800_TV_PAL : Atari800_TV_NTSC;
-		Atari800_SetTVMode(new_tv_mode);
+		Atari800_SetTVMode_Ctx(inst, new_tv_mode);
 
 		StateSav_ReadUBYTE(&temp, 1);
 		StateSav_ReadINT(&os, 1);
@@ -1845,14 +1980,15 @@ void Atari800_StateRead(UBYTE version)
 		StateSav_ReadINT(&default_system, 1);
 		Atari800_SetMachineType(Atari800_machine_type);
 	}
-	load_roms();
+	load_roms(inst);
 	/* XXX: what about patches? */
 }
 
 #endif
 
-void Atari800_SetTVMode(int mode)
+void Atari800_SetTVMode_Ctx(Atari800_Instance *inst, int mode)
 {
+	ATARI_PIN_CTX(inst);
 	if (mode != Atari800_tv_mode) {
 		Atari800_tv_mode = mode;
 #if !defined(BASIC) && !defined(CURSES_BASIC)
@@ -1867,4 +2003,21 @@ void Atari800_SetTVMode(int mode)
 			POKEYSND_Init(POKEYSND_FREQ_17_EXACT, Sound_out.freq, Sound_out.channels, Sound_out.sample_size == 2 ? POKEYSND_BIT16 : 0);
 #endif /* SOUND */
 	}
+}
+
+/* Multi-instance lifecycle API (instance.h). These are thin wrappers over
+   the _Ctx entry points above. */
+void Atari800_FrameInstance(Atari800_Instance *inst)
+{
+	Atari800_Frame_Ctx(inst);
+}
+
+void Atari800_ColdstartInstance(Atari800_Instance *inst)
+{
+	Atari800_Coldstart_Ctx(inst);
+}
+
+void Atari800_WarmstartInstance(Atari800_Instance *inst)
+{
+	Atari800_Warmstart_Ctx(inst);
 }

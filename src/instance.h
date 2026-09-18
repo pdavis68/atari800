@@ -24,7 +24,10 @@
 #include <stdio.h> /* FILENAME_MAX, FILE */
 
 #include "atari.h" /* UBYTE, UWORD, ULONG, TRUE/FALSE */
+#include "artifact.h" /* ARTIFACT_t */
+#include "filter_ntsc.h" /* atari_ntsc_setup_t, atari_ntsc_t */
 #include "screen.h" /* Screen_WIDTH */
+#include "colours.h" /* Colours_setup_t, COLOURS_EXTERNAL_t */
 
 /* ------------------------------------------------------------------ */
 /* CPU state                                                          */
@@ -785,7 +788,104 @@ typedef struct Screen_state_t {
 	double last_time;
 } Screen_state_t;
 
+typedef struct Artifact_state_t {
+	/* The currently used artifact emulation mode. */
+	ARTIFACT_t mode;
+	/* Per-TV-system artifacting modes (set from config/command line). */
+	ARTIFACT_t mode_ntsc;
+	ARTIFACT_t mode_pal;
+} Artifact_state_t;
+
+typedef union Pal_blending_palette_t {
+	UWORD bpp16[2][256];	/* 16-bit palette */
+	ULONG bpp32[2][256];	/* 32-bit palette */
+} Pal_blending_palette_t;
+
+typedef struct Pal_blending_state_t {
+	Pal_blending_palette_t palette;
+	ULONG shift_mask;
+} Pal_blending_state_t;
+
+typedef struct Filter_ntsc_state_t {
+	/* Controls used to adjust the palette in the NTSC filter. */
+	atari_ntsc_setup_t setup;
+	/* The NTSC filter instance (allocated by FILTER_NTSC_New()). */
+	atari_ntsc_t *emu;
+} Filter_ntsc_state_t;
+
+typedef struct Colours_state_t {
+	/* NTSC palette setup and external palette. */
+	Colours_setup_t ntsc_setup;
+	COLOURS_EXTERNAL_t ntsc_external;
+	/* PAL palette setup and external palette. */
+	Colours_setup_t pal_setup;
+	COLOURS_EXTERNAL_t pal_external;
+	/* Pointers to the setup/external palette of the current TV system
+	   (point into ntsc_* or pal_* above). */
+	Colours_setup_t *setup;
+	COLOURS_EXTERNAL_t *external;
+} Colours_state_t;
+
 typedef struct Sound_state_t Sound_state_t;
+
+/* ------------------------------------------------------------------ */
+/* State save/load stream (statesav.c)                                */
+/* ------------------------------------------------------------------ */
+
+typedef struct Statesav_state_t {
+	/* The currently open state save/read stream. Stored opaquely: it is a
+	   gzFile (zlib / in-memory variants) or a FILE *, depending on the
+	   build configuration (see statesav.c). */
+	void *StateFile;
+	int nFileError;
+} Statesav_state_t;
+
+/* ------------------------------------------------------------------ */
+/* Monitor / debugger (monitor.c)                                     */
+/* ------------------------------------------------------------------ */
+
+#ifdef MONITOR_BREAKPOINTS
+/* Breakpoint table size limit (moved here from monitor.h so the table can
+   be embedded by value in Monitor_state_t). */
+#define MONITOR_BREAKPOINT_TABLE_MAX  20
+
+typedef struct {
+	UBYTE enabled;
+	UWORD condition;
+	UWORD value;
+	UWORD m_addr; /* only for MEM: */
+} MONITOR_breakpoint_cond;
+#endif /* MONITOR_BREAKPOINTS */
+
+#ifdef MONITOR_PROFILE
+typedef struct {
+	unsigned long count; /* number of times executed since last reset */
+	unsigned long cycles; /* number of cycles executed since last reset */
+} MONITOR_coverage_rec;
+#endif /* MONITOR_PROFILE */
+
+typedef struct Monitor_state_t {
+#ifdef MONITOR_BREAK
+	UWORD break_addr;
+	UBYTE break_step;
+	UBYTE break_ret;
+	UBYTE break_brk;
+	int ret_nesting;
+	UBYTE break_over;   /* previously a file-scope static in monitor.c */
+#endif
+#ifdef MONITOR_BREAKPOINTS
+	MONITOR_breakpoint_cond breakpoint_table[MONITOR_BREAKPOINT_TABLE_MAX];
+	int breakpoint_table_size;
+	int breakpoints_enabled;
+#endif /* MONITOR_BREAKPOINTS */
+#ifdef MONITOR_PROFILE
+	/* Code coverage/profiling counters (MONITOR_PROFILE is a non-default
+	   debug build option; embedded by value, ~1 MB per instance). */
+	MONITOR_coverage_rec coverage[0x10000];
+	unsigned long coverage_insns;
+	unsigned long coverage_cycles;
+#endif /* MONITOR_PROFILE */
+} Monitor_state_t;
 
 /* ------------------------------------------------------------------ */
 /* Top-level instance                                                 */
@@ -823,6 +923,12 @@ typedef struct Atari800_Instance {
 	XEP80_state_t xep80;
 	RDevice_state_t rdevice;
 	Screen_state_t screen;
+	Colours_state_t colours;
+	Artifact_state_t artifact;
+	Pal_blending_state_t pal_blending;
+	Filter_ntsc_state_t filter_ntsc;
+	Statesav_state_t statesav;
+	Monitor_state_t monitor;
 	Sound_state_t *sound;
 
 	/* Top-level configuration */
@@ -844,6 +950,19 @@ typedef struct Atari800_Instance {
 	int turbo_speed;
 	int start_in_monitor;
 	int auto_frameskip;
+
+	/* Driver internals (previously file-scope/function-local statics in
+	   atari.c). */
+	int refresh_counter;          /* Atari800_Frame frame skip counter */
+	double sync_lasttime;         /* Atari800_Sync */
+	double last_display_screen_time; /* Atari800_Frame turbo display throttle */
+	double afs_lasttime;          /* autoframeskip */
+	double afs_sleeptime;
+	int afs_lastframe;
+	int afs_discard;
+#ifdef BENCHMARK
+	double benchmark_start_time;
+#endif
 } Atari800_Instance;
 
 /* Lifecycle API (implemented in atari.c / a new instance.c) */
@@ -857,6 +976,7 @@ void Atari800_WarmstartInstance(Atari800_Instance *inst);
    not yet been migrated to the instance context. The legacy memory globals
    (MEMORY_mem, MEMORY_attrib, ...) are aliased to this instance's memory so
    the tree stays buildable during the incremental migration. */
-extern Atari800_Instance *Atari800_default;
+/* Atari800_default is declared in atari.h (this header includes it) as
+   `extern struct Atari800_Instance *`, which is the same type. */
 
 #endif /* INSTANCE_H_ */

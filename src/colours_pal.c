@@ -35,7 +35,19 @@
 #define M_PI		3.14159265358979323846
 #endif
 
-Colours_setup_t COLOURS_PAL_setup;
+/* Per-instance context (Option C transitional pattern): the _Ctx entry
+   points pin the file-scope context below; the legacy state names are
+   re-pointed to the pinned instance's Colours_state_t. */
+static Atari800_Instance *PALI;
+static Colours_state_t *PAL;
+
+#undef COLOURS_PAL_setup
+#undef COLOURS_PAL_external
+#define COLOURS_PAL_setup    (PAL->pal_setup)
+#define COLOURS_PAL_external (PAL->pal_external)
+
+#define COLOURS_PAL_PIN_CTX(inst) \
+	do { PALI = (inst); PAL = &PALI->colours; } while (0)
 
 /* PAL-specific default setup. */
 static struct {
@@ -44,7 +56,6 @@ static struct {
 	23.2, /* chosen by eye to give a smooth rainbow */
 };
 
-COLOURS_EXTERNAL_t COLOURS_PAL_external = { "", FALSE, FALSE };
 
 /* Fills YUV_TABLE from external palette. External palette is not adjusted if
    COLOURS_PAL_external.adjust is false. */
@@ -327,8 +338,9 @@ static void GetYUVFromGenerated(double yuv_table[256*5])
 	}
 }
 
-void COLOURS_PAL_GetYUV(double yuv_table[256*5])
+void COLOURS_PAL_GetYUV_Ctx(Atari800_Instance *inst, double yuv_table[256*5])
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	if (COLOURS_PAL_external.loaded)
 		GetYUVFromExternal(yuv_table);
 	else
@@ -371,27 +383,31 @@ static void YUV2RGB(int colourtable[256], double const yuv_table[256*5])
 	}
 }
 
-void COLOURS_PAL_Update(int colourtable[256])
+void COLOURS_PAL_Update_Ctx(Atari800_Instance *inst, int colourtable[256])
 {
 	double yuv_table[256*5];
-	COLOURS_PAL_GetYUV(yuv_table);
+	COLOURS_PAL_PIN_CTX(inst);
+	COLOURS_PAL_GetYUV_Ctx(inst, yuv_table);
 	YUV2RGB(colourtable, yuv_table);
 }
 
-void COLOURS_PAL_RestoreDefaults(void)
+void COLOURS_PAL_RestoreDefaults_Ctx(Atari800_Instance *inst)
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	COLOURS_PAL_setup.color_delay = default_setup.color_delay;
 }
 
-Colours_preset_t COLOURS_PAL_GetPreset(void)
+Colours_preset_t COLOURS_PAL_GetPreset_Ctx(Atari800_Instance *inst)
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	if (Util_almostequal(COLOURS_PAL_setup.color_delay, default_setup.color_delay, 0.001))
 		return COLOURS_PRESET_STANDARD;
 	return COLOURS_PRESET_CUSTOM;
 }
 
-int COLOURS_PAL_ReadConfig(char *option, char *ptr)
+int COLOURS_PAL_ReadConfig_Ctx(Atari800_Instance *inst, char *option, char *ptr)
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	if (strcmp(option, "COLOURS_PAL_SATURATION") == 0)
 		return Util_sscandouble(ptr, &COLOURS_PAL_setup.saturation);
 	else if (strcmp(option, "COLOURS_PAL_CONTRAST") == 0)
@@ -416,8 +432,9 @@ int COLOURS_PAL_ReadConfig(char *option, char *ptr)
 	return TRUE;
 }
 
-void COLOURS_PAL_WriteConfig(FILE *fp)
+void COLOURS_PAL_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	fprintf(fp, "COLOURS_PAL_SATURATION=%g\n", COLOURS_PAL_setup.saturation);
 	fprintf(fp, "COLOURS_PAL_CONTRAST=%g\n", COLOURS_PAL_setup.contrast);
 	fprintf(fp, "COLOURS_PAL_BRIGHTNESS=%g\n", COLOURS_PAL_setup.brightness);
@@ -429,8 +446,9 @@ void COLOURS_PAL_WriteConfig(FILE *fp)
 	fprintf(fp, "COLOURS_PAL_ADJUST_EXTERNAL_PALETTE=%d\n", COLOURS_PAL_external.adjust);
 }
 
-int COLOURS_PAL_Initialise(int *argc, char *argv[])
+int COLOURS_PAL_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
+	COLOURS_PAL_PIN_CTX(inst);
 	int i;
 	int j;
 

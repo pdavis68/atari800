@@ -47,39 +47,54 @@ enum {
 	/* Number of values in the emumerator */
 	Atari800_MACHINE_SIZE
 };
+
+/* NOTE: instance.h includes this header, so this header cannot include
+   instance.h (include cycle). The per-instance top-level state lives in
+   Atari800_Instance (instance.h); the legacy global names below are aliased
+   to the default instance. TUs that use these aliases need the complete
+   struct type -- include "instance.h" (directly or transitively). */
+struct Atari800_Instance;
+extern struct Atari800_Instance *Atari800_default;
+
 /* Don't change this variable directly; use Atari800_SetMachineType() instead. */
-extern int Atari800_machine_type;
-void Atari800_SetMachineType(int type);
+#define Atari800_machine_type (Atari800_default->machine_type)
+void Atari800_SetMachineType_Ctx(struct Atari800_Instance *inst, int type);
+#define Atari800_SetMachineType(type) \
+	Atari800_SetMachineType_Ctx(Atari800_default, (type))
 
 /* Always call Atari800_InitialiseMachine() after changing Atari800_machine_type
    or MEMORY_ram_size! */
 
 /* Indicates if machine has BASIC built in. */
-extern int Atari800_builtin_basic;
+#define Atari800_builtin_basic (Atari800_default->builtin_basic)
 
 /* Indicates existence of 1200XL's two keyboard LEDs.
    Used only for Atari800_MACHINE_XLXE. */
-extern int Atari800_keyboard_leds;
+#define Atari800_keyboard_leds (Atari800_default->keyboard_leds)
 
 /* Indicates existence of F1-F4 keys.
    Used only for Atari800_MACHINE_XLXE. */
-extern int Atari800_f_keys;
+#define Atari800_f_keys (Atari800_default->f_keys)
 
 /* State of the J1 jumper on the 1200XL board.
    Used only for Atari800_MACHINE_XLXE. Always call
    Atari800_UpdateJumper() after changing this variable. */
-extern int Atari800_jumper;
-void Atari800_UpdateJumper(void);
+#define Atari800_jumper (Atari800_default->jumper)
+void Atari800_UpdateJumper_Ctx(struct Atari800_Instance *inst);
+#define Atari800_UpdateJumper() \
+	Atari800_UpdateJumper_Ctx(Atari800_default)
 
 /* Indicates existence of XEGS' built-in game.
    Used only for Atari800_MACHINE_XLXE. */
-extern int Atari800_builtin_game;
+#define Atari800_builtin_game (Atari800_default->builtin_game)
 
 /* TRUE if the XEGS keyboard is detached.
    Used only for Atari800_MACHINE_XLXE. Always call
    Atari800_UpdateKeyboardDetached() after changing this variable. */
-extern int Atari800_keyboard_detached;
-void Atari800_UpdateKeyboardDetached(void);
+#define Atari800_keyboard_detached (Atari800_default->keyboard_detached)
+void Atari800_UpdateKeyboardDetached_Ctx(struct Atari800_Instance *inst);
+#define Atari800_UpdateKeyboardDetached() \
+	Atari800_UpdateKeyboardDetached_Ctx(Atari800_default)
 
 /* Video system. */
 #define Atari800_TV_UNSET 0
@@ -92,56 +107,62 @@ void Atari800_UpdateKeyboardDetached(void);
 
 /* Video system / Number of scanlines per frame. Do not set this variable
    directly; instead use Atari800_SetTVMode(). */
-extern int Atari800_tv_mode;
+#define Atari800_tv_mode (Atari800_default->tv_mode)
 
 /* TRUE to disable Atari BASIC when booting Atari (hold Option in XL/XE). */
-extern int Atari800_disable_basic;
+#define Atari800_disable_basic (Atari800_default->disable_basic)
 
 /* OS ROM version currently used by the emulator. Can be -1 for missing ROM, or
    a value from the SYSROM enumerator. */
-extern int Atari800_os_version;
+#define Atari800_os_version (Atari800_default->os_version)
 
 /* If Atari800_Frame() sets it to TRUE, then the current contents
    of Screen_atari should be displayed. */
-extern int Atari800_display_screen;
+#define Atari800_display_screen (Atari800_default->display_screen)
 
 /* Simply incremented by Atari800_Frame(). */
-extern int Atari800_nframes;
+#define Atari800_nframes (Atari800_default->nframes)
 
 /* How often the screen is updated (1 = every Atari frame). */
-extern int Atari800_refresh_rate;
+#define Atari800_refresh_rate (Atari800_default->refresh_rate)
 
 /* If TRUE, will try to maintain the emulation speed to 100% */
-extern int Atari800_auto_frameskip;
+#define Atari800_auto_frameskip (Atari800_default->auto_frameskip)
 
 /* Set to TRUE for faster emulation with Atari800_refresh_rate > 1.
    Set to FALSE for accurate emulation with Atari800_refresh_rate > 1. */
-extern int Atari800_collisions_in_skipped_frames;
+#define Atari800_collisions_in_skipped_frames \
+	(Atari800_default->collisions_in_skipped_frames)
 
 /* Set to TRUE to run emulated Atari as fast as possible */
-extern int Atari800_turbo;
+#define Atari800_turbo (Atari800_default->turbo)
 /* Percentage speed or 0 for max turbo */
-extern int Atari800_turbo_speed;
+#define Atari800_turbo_speed (Atari800_default->turbo_speed)
 
 /* Set to TRUE to start in the monitor. It's up to each port's
 	main.c to implement this (initially only SDL supports it). */
-extern int Atari800_start_in_monitor;
+#define Atari800_start_in_monitor (Atari800_default->start_in_monitor)
 
 /* Initializes Atari800 emulation core. */
 int Atari800_Initialise(int *argc, char *argv[]);
 
 /* Emulates one frame (1/50sec for PAL, 1/60sec for NTSC). */
-void Atari800_Frame(void);
+void Atari800_Frame_Ctx(struct Atari800_Instance *inst);
+#define Atari800_Frame() Atari800_Frame_Ctx(Atari800_default)
 
 /* Reboots the emulated Atari. */
-void Atari800_Coldstart(void);
+void Atari800_Coldstart_Ctx(struct Atari800_Instance *inst);
+#define Atari800_Coldstart() Atari800_Coldstart_Ctx(Atari800_default)
 
 /* Presses the Reset key in the emulated Atari. */
-void Atari800_Warmstart(void);
+void Atari800_Warmstart_Ctx(struct Atari800_Instance *inst);
+#define Atari800_Warmstart() Atari800_Warmstart_Ctx(Atari800_default)
 
 /* Reinitializes after Atari800_machine_type or ram_size change.
    You should call Atari800_Coldstart() after it. */
-int Atari800_InitialiseMachine(void);
+int Atari800_InitialiseMachine_Ctx(struct Atari800_Instance *inst);
+#define Atari800_InitialiseMachine() \
+	Atari800_InitialiseMachine_Ctx(Atari800_default)
 
 /* Shuts down Atari800 emulation core and saves the config file if needed.
  * Use it when a user requested exiting/entering a monitor. */
@@ -182,18 +203,23 @@ UNALIGNED_STAT_DECL(memory_write_aligned_word_stat)
 #endif
 
 /* Sleeps until it's time to emulate next Atari frame. */
-void Atari800_Sync(void);
+void Atari800_Sync_Ctx(struct Atari800_Instance *inst);
+#define Atari800_Sync() Atari800_Sync_Ctx(Atari800_default)
 
 /* Load a ROM image filename of size nbytes into buffer */
 int Atari800_LoadImage(const char *filename, UBYTE *buffer, int nbytes);
 
 /* Save State */
-void Atari800_StateSave(void);
+void Atari800_StateSave_Ctx(struct Atari800_Instance *inst);
+#define Atari800_StateSave() Atari800_StateSave_Ctx(Atari800_default)
 
 /* Read State */
-void Atari800_StateRead(UBYTE version);
+void Atari800_StateRead_Ctx(struct Atari800_Instance *inst, UBYTE version);
+#define Atari800_StateRead(version) \
+	Atari800_StateRead_Ctx(Atari800_default, (version))
 
 /* Change TV mode. */
-void Atari800_SetTVMode(int mode);
+void Atari800_SetTVMode_Ctx(struct Atari800_Instance *inst, int mode);
+#define Atari800_SetTVMode(mode) Atari800_SetTVMode_Ctx(Atari800_default, (mode))
 
 #endif /* ATARI_H_ */

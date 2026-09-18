@@ -45,6 +45,19 @@
 
 #include "atari.h"
 #include "statesav.h"
+
+/* Within this file the legacy names are real _Ctx functions, not the
+   forwarding macros from statesav.h. */
+#undef StateSav_SaveAtariState
+#undef StateSav_ReadAtariState
+#undef StateSav_SaveUBYTE
+#undef StateSav_SaveUWORD
+#undef StateSav_SaveINT
+#undef StateSav_SaveFNAME
+#undef StateSav_ReadUBYTE
+#undef StateSav_ReadUWORD
+#undef StateSav_ReadINT
+#undef StateSav_ReadFNAME
 #include "antic.h"
 #include "cartridge.h"
 #include "cpu.h"
@@ -101,8 +114,17 @@ static size_t mem_write(const void *buf, size_t len, gzFile stream);
 #define Z_OK    0
 #endif
 
-static gzFile StateFile = NULL;
-static int nFileError = Z_OK;
+/* Option C refactor (docs/refactor-checklist.md §4.5): the save/read stream
+   lives in the instance's Statesav_state_t. Each entry point pins the
+   file-scope context via STATESAV_PIN_CTX(); the bodies below are unchanged
+   except that StateFile/nFileError are macros routed through SS. */
+static Statesav_state_t *SS;
+
+#define STATESAV_PIN_CTX(inst) \
+	do { SS = &(inst)->statesav; } while (0)
+
+#define StateFile  ((gzFile) SS->StateFile)
+#define nFileError (SS->nFileError)
 
 static void GetGZErrorText(void)
 {
@@ -123,8 +145,9 @@ static void GetGZErrorText(void)
 }
 
 /* Value is memory location of data, num is number of type to save */
-void StateSav_SaveUBYTE(const UBYTE *data, int num)
+void StateSav_SaveUBYTE_Ctx(Atari800_Instance *inst, const UBYTE *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -137,8 +160,9 @@ void StateSav_SaveUBYTE(const UBYTE *data, int num)
 }
 
 /* Value is memory location of data, num is number of type to save */
-void StateSav_ReadUBYTE(UBYTE *data, int num)
+void StateSav_ReadUBYTE_Ctx(Atari800_Instance *inst, UBYTE *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -147,8 +171,9 @@ void StateSav_ReadUBYTE(UBYTE *data, int num)
 }
 
 /* Value is memory location of data, num is number of type to save */
-void StateSav_SaveUWORD(const UWORD *data, int num)
+void StateSav_SaveUWORD_Ctx(Atari800_Instance *inst, const UWORD *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -178,8 +203,9 @@ void StateSav_SaveUWORD(const UWORD *data, int num)
 }
 
 /* Value is memory location of data, num is number of type to save */
-void StateSav_ReadUWORD(UWORD *data, int num)
+void StateSav_ReadUWORD_Ctx(Atari800_Instance *inst, UWORD *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -201,8 +227,9 @@ void StateSav_ReadUWORD(UWORD *data, int num)
 	}
 }
 
-void StateSav_SaveINT(const int *data, int num)
+void StateSav_SaveINT_Ctx(Atari800_Instance *inst, const int *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -254,8 +281,9 @@ void StateSav_SaveINT(const int *data, int num)
 	}
 }
 
-void StateSav_ReadINT(int *data, int num)
+void StateSav_ReadINT_Ctx(Atari800_Instance *inst, int *data, int num)
 {
+	STATESAV_PIN_CTX(inst);
 	if (!StateFile || nFileError != Z_OK)
 		return;
 
@@ -296,8 +324,9 @@ void StateSav_ReadINT(int *data, int num)
 	}
 }
 
-void StateSav_SaveFNAME(const char *filename)
+void StateSav_SaveFNAME_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	STATESAV_PIN_CTX(inst);
 	UWORD namelen;
 	char dirname[FILENAME_MAX]="";
 
@@ -311,25 +340,27 @@ void StateSav_SaveFNAME(const char *filename)
 
 	namelen = strlen(filename);
 	/* Save the length of the filename, followed by the filename */
-	StateSav_SaveUWORD(&namelen, 1);
-	StateSav_SaveUBYTE((const UBYTE *) filename, namelen);
+	StateSav_SaveUWORD_Ctx(inst, &namelen, 1);
+	StateSav_SaveUBYTE_Ctx(inst, (const UBYTE *) filename, namelen);
 }
 
-void StateSav_ReadFNAME(char *filename)
+void StateSav_ReadFNAME_Ctx(Atari800_Instance *inst, char *filename)
 {
+	STATESAV_PIN_CTX(inst);
 	UWORD namelen = 0;
 
-	StateSav_ReadUWORD(&namelen, 1);
+	StateSav_ReadUWORD_Ctx(inst, &namelen, 1);
 	if (namelen >= FILENAME_MAX) {
 		Log_print("Filenames of %d characters not supported on this platform", (int) namelen);
 		return;
 	}
-	StateSav_ReadUBYTE((UBYTE *) filename, namelen);
+	StateSav_ReadUBYTE_Ctx(inst, (UBYTE *) filename, namelen);
 	filename[namelen] = 0;
 }
 
-int StateSav_SaveAtariState(const char *filename, const char *mode, UBYTE SaveVerbose)
+int StateSav_SaveAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode, UBYTE SaveVerbose)
 {
+	STATESAV_PIN_CTX(inst);
 	UBYTE StateVersion = SAVE_VERSION_NUMBER;
 
 	if (StateFile != NULL) {
@@ -352,49 +383,49 @@ int StateSav_SaveAtariState(const char *filename, const char *mode, UBYTE SaveVe
 	}
 
 	STATESAV_TAG(size);  /* initialize to 0, set to actual size if successful */
-	StateSav_SaveUBYTE(&StateVersion, 1);
-	StateSav_SaveUBYTE(&SaveVerbose, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &StateVersion, 1);
+	StateSav_SaveUBYTE_Ctx(inst, &SaveVerbose, 1);
 	/* The order here is important. Atari800_StateSave must be first because it saves the machine type, and
 	   decisions on what to save/not save are made based off that later in the process */
-	Atari800_StateSave();
-	CARTRIDGE_StateSave();
-	SIO_StateSave();
-	ANTIC_StateSave();
-	CPU_StateSave(Atari800_default, SaveVerbose);
-	GTIA_StateSave();
-	PIA_StateSave();
-	POKEY_StateSave();
+	Atari800_StateSave_Ctx(inst);
+	CARTRIDGE_StateSave_Ctx(inst);
+	SIO_StateSave_Ctx(inst);
+	ANTIC_StateSave_Ctx(inst);
+	CPU_StateSave(inst, SaveVerbose);
+	GTIA_StateSave_Ctx(inst);
+	PIA_StateSave_Ctx(inst);
+	POKEY_StateSave_Ctx(inst);
 #ifdef XEP80_EMULATION
-	XEP80_StateSave();
+	XEP80_StateSave_Ctx(inst);
 #else
 	{
 		int local_xep80_enabled = FALSE;
-		StateSav_SaveINT(&local_xep80_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &local_xep80_enabled, 1);
 	}
 #endif /* XEP80_EMULATION */
-	PBI_StateSave();
+	PBI_StateSave_Ctx(inst);
 #ifdef PBI_MIO
-	PBI_MIO_StateSave();
+	PBI_MIO_StateSave_Ctx(inst);
 #else
 	{
 		int local_mio_enabled = FALSE;
-		StateSav_SaveINT(&local_mio_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &local_mio_enabled, 1);
 	}
 #endif /* PBI_MIO */
 #ifdef PBI_BB
-	PBI_BB_StateSave();
+	PBI_BB_StateSave_Ctx(inst);
 #else
 	{
 		int local_bb_enabled = FALSE;
-		StateSav_SaveINT(&local_bb_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &local_bb_enabled, 1);
 	}
 #endif /* PBI_BB */
 #ifdef PBI_XLD
-	PBI_XLD_StateSave();
+	PBI_XLD_StateSave_Ctx(inst);
 #else
 	{
 		int local_xld_enabled = FALSE;
-		StateSav_SaveINT(&local_xld_enabled, 1);
+		StateSav_SaveINT_Ctx(inst, &local_xld_enabled, 1);
 	}
 #endif /* PBI_XLD */
 #ifdef DREAMCAST
@@ -414,8 +445,9 @@ int StateSav_SaveAtariState(const char *filename, const char *mode, UBYTE SaveVe
 	return TRUE;
 }
 
-int StateSav_ReadAtariState(const char *filename, const char *mode)
+int StateSav_ReadAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode)
 {
+	STATESAV_PIN_CTX(inst);
 	char header_string[8];
 	UBYTE StateVersion = 0;  /* The version of the save file */
 	UBYTE SaveVerbose = 0;   /* Verbose mode means save basic, OS if patched */
@@ -462,22 +494,22 @@ int StateSav_ReadAtariState(const char *filename, const char *mode)
 		return FALSE;
 	}
 
-	Atari800_StateRead(StateVersion);
+	Atari800_StateRead_Ctx(inst, StateVersion);
 	if (StateVersion >= 4) {
-		CARTRIDGE_StateRead(StateVersion);
-		SIO_StateRead();
+		CARTRIDGE_StateRead_Ctx(inst, StateVersion);
+		SIO_StateRead_Ctx(inst);
 	}
-	ANTIC_StateRead();
-	CPU_StateRead(Atari800_default, SaveVerbose, StateVersion);
-	GTIA_StateRead(StateVersion);
-	PIA_StateRead(StateVersion);
-	POKEY_StateRead();
+	ANTIC_StateRead_Ctx(inst);
+	CPU_StateRead(inst, SaveVerbose, StateVersion);
+	GTIA_StateRead_Ctx(inst, StateVersion);
+	PIA_StateRead_Ctx(inst, StateVersion);
+	POKEY_StateRead_Ctx(inst);
 	if (StateVersion >= 6) {
 #ifdef XEP80_EMULATION
-		XEP80_StateRead();
+		XEP80_StateRead_Ctx(inst);
 #else
 		int local_xep80_enabled = FALSE;
-		StateSav_ReadINT(&local_xep80_enabled,1);
+		StateSav_ReadINT_Ctx(inst, &local_xep80_enabled,1);
 		if (local_xep80_enabled) {
 			Log_print("Cannot read this state file because this version does not support XEP80.");
 			GZCLOSE(StateFile);
@@ -485,13 +517,13 @@ int StateSav_ReadAtariState(const char *filename, const char *mode)
 			return FALSE;
 		}
 #endif /* XEP80_EMULATION */
-		PBI_StateRead();
+		PBI_StateRead_Ctx(inst);
 #ifdef PBI_MIO
-		PBI_MIO_StateRead();
+		PBI_MIO_StateRead_Ctx(inst);
 #else
 		{
 			int local_mio_enabled;
-			StateSav_ReadINT(&local_mio_enabled,1);
+			StateSav_ReadINT_Ctx(inst, &local_mio_enabled,1);
 			if (local_mio_enabled) {
 				Log_print("Cannot read this state file because this version does not support MIO.");
 				GZCLOSE(StateFile);
@@ -501,11 +533,11 @@ int StateSav_ReadAtariState(const char *filename, const char *mode)
 		}
 #endif /* PBI_MIO */
 #ifdef PBI_BB
-		PBI_BB_StateRead();
+		PBI_BB_StateRead_Ctx(inst);
 #else
 		{
 			int local_bb_enabled;
-			StateSav_ReadINT(&local_bb_enabled,1);
+			StateSav_ReadINT_Ctx(inst, &local_bb_enabled,1);
 			if (local_bb_enabled) {
 				Log_print("Cannot read this state file because this version does not support the Black Box.");
 				GZCLOSE(StateFile);
@@ -515,11 +547,11 @@ int StateSav_ReadAtariState(const char *filename, const char *mode)
 		}
 #endif /* PBI_BB */
 #ifdef PBI_XLD
-		PBI_XLD_StateRead();
+		PBI_XLD_StateRead_Ctx(inst);
 #else
 		{
 			int local_xld_enabled;
-			StateSav_ReadINT(&local_xld_enabled,1);
+			StateSav_ReadINT_Ctx(inst, &local_xld_enabled,1);
 			if (local_xld_enabled) {
 				Log_print("Cannot read this state file because this version does not support the 1400XL/1450XLD.");
 				GZCLOSE(StateFile);

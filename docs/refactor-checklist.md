@@ -36,12 +36,13 @@ refactor. It is the working companion to
       `ANTIC_state_t`, `GTIA_state_t`, `POKEY_state_t`, `PIA_state_t`.
 - [ ] Define peripheral sub-structs: `SIO_state_t`, `Devices_state_t`,
       `Cartridge_state_t`, `Cassette_state_t`, `PBI_state_t`, `Input_state_t`,
-      `Screen_state_t`, `Sound_state_t`. Done so far (embedded by value in
-      `Atari800_Instance`): `SIO_state_t`, `Devices_state_t`,
-      `Cartridge_state_t`, `Cassette_state_t`, `PBI_state_t` (+ SCSI/BB/MIO/
-      ESC/Binload/RTIME/Voicebox/Pokeyrec/IDE/AF80/BIT3/PROTO80/XLD/XEP80/
-      RDevice/Input), and `Screen_state_t` (2026-09-16). Still
-      forward-declared: `Sound_state_t` (Phase 4.3).
+      `Screen_state_t`, `Colours_state_t`, `Sound_state_t`. Done so far
+      (embedded by value in `Atari800_Instance`): `SIO_state_t`,
+      `Devices_state_t`, `Cartridge_state_t`, `Cassette_state_t`,
+      `PBI_state_t` (+ SCSI/BB/MIO/ESC/Binload/RTIME/Voicebox/Pokeyrec/IDE/
+      AF80/BIT3/PROTO80/XLD/XEP80/RDevice/Input), `Screen_state_t`
+      (2026-09-16), and `Colours_state_t` (2026-09-16), `Artifact_state_t`
+      (2026-09-16). Still forward-declared: `Sound_state_t` (Phase 4.3).
 - [x] Define the lifecycle API prototypes (`Atari800_NewInstance`, etc.).
 - [x] Add the transitional `Atari800_default` instance pointer.
 
@@ -121,8 +122,10 @@ refactor. It is the working companion to
 - [x] Statically allocate a default `Atari800_Instance` in `atari.c` and expose
       it as `Atari800_default` so the legacy memory globals are always valid.
 - [x] Implement `Atari800_NewInstance` / `Atari800_FreeInstance`.
-- [ ] Implement `Atari800_FrameInstance` / `Atari800_ColdstartInstance` /
-      `Atari800_WarmstartInstance` (multi-instance API, later phases).
+- [x] Implement `Atari800_FrameInstance` / `Atari800_ColdstartInstance` /
+      `Atari800_WarmstartInstance`. Done 2026-09-18: thin wrappers over
+      `Atari800_Frame_Ctx` / `Atari800_Coldstart_Ctx` / `Atari800_Warmstart_Ctx`
+      in [`src/atari.c`](src/atari.c) (see §4.4).
 - [x] Update callers in `atari.c` and `antic.c` to pass `Atari800_default` to
       `CPU_GO` / `CPU_NMI` / `CPU_Reset`.
 - [x] Verify the tree builds (`make`) and the emulator starts (smoke run).
@@ -979,16 +982,21 @@ refactor. It is the working companion to
 
 ## Phase 4 — Output / input / platform layer
 
-> **Status: in progress.** Screen (§4.1) done (2026-09-16). All public Screen
-> functions now expose `*_Ctx(Atari800_Instance *inst, ...)` entry points with
-> legacy-name forwarding macros in `screen.h`; `Screen_state_t` is defined
-> concretely in [`src/instance.h`](src/instance.h) and **embedded by value** in
-> `Atari800_Instance` (`.screen`, replacing the earlier forward-declared
-> pointer member). Build passes; 20 s no-disk smoke run clean (no CIM);
-> Acid800 results identical to the pre-refactor baseline (23 success /
-> 28 expected failures / 2 skipped; the 2 FAILs — "MMU: XL banking" and
-> "suite totals changed" — are pre-existing, see
-> [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
+> **Status: in progress.** Screen (§4.1) done (2026-09-16); Colours
+> (§4.2, including the COLOURS_NTSC/COLOURS_PAL sub-modules), Artifact,
+> Pal_blending, and Filter_ntsc (§4.2) done (2026-09-16); the top-level
+> driver (§4.4) done (2026-09-18).
+> File_export (§4.2) and Videomode (§4.2) are **deferred** (host-output
+> state; see their entries for rationale).
+> All public Screen/Colours functions now expose
+> `*_Ctx(Atari800_Instance *inst, ...)` entry points with legacy-name
+> forwarding macros in their headers; `Screen_state_t` and `Colours_state_t`
+> are defined concretely in [`src/instance.h`](src/instance.h) and **embedded
+> by value** in `Atari800_Instance` (`.screen`, `.colours`). Build passes;
+> 20 s no-disk smoke run clean (no CIM); Acid800 results identical to the
+> pre-refactor baseline (23 success / 28 expected failures / 2 skipped; the
+> 2 FAILs — "MMU: XL banking" and "suite totals changed" — are pre-existing,
+> see [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
 
 ### 4.1 Screen — [`src/screen.h`](src/screen.h), [`src/screen.c`](src/screen.c)
 
@@ -1046,18 +1054,170 @@ refactor. It is the working companion to
 
 ### 4.2 Colours / video filters
 
-- [ ] **Colours** — [`src/colours.h`](src/colours.h): `Colours_*` functions; state
+- [x] **Colours** — [`src/colours.h`](src/colours.h): `Colours_*` functions; state
       `Colours_table[256]`, `Colours_setup`, `Colours_NTSC_setup`, `Colours_PAL_setup`.
+      Done 2026-09-16 (including the COLOURS_NTSC/COLOURS_PAL sub-modules,
+      which are part of the same state cluster): each public function is now
+      `Colours_*_Ctx(Atari800_Instance *inst, ...)` in `colours.c`, pinning
+      the file-scope context (`CO = &inst->colours`, `COI = inst`) via
+      `COLOURS_PIN_CTX(inst)`; `Colours_setup`/`Colours_external` are
+      `#undef`'d and re-pointed to `CO->setup`/`CO->external` inside
+      `colours.c`. In `colours.h` the legacy names are forwarding macros
+      passing `Atari800_default`. Include-cycle note: `instance.h` includes
+      `colours.h` (for the `Colours_setup_t`/`COLOURS_EXTERNAL_t` types used
+      by `Colours_state_t`), so `colours.h` forward-declares
+      `struct Atari800_Instance` for the `_Ctx` prototypes *before*
+      including `instance.h`; the aliases/forwarding macros come after.
+      The stateless helpers (`Colours_RGB2YUV`, `Colours_YUV2RGB`,
+      `Colours_Gamma2Linear`, `Colours_Linear2sRGB`) keep their signatures.
+      `COLOURS_NTSC_*`/`COLOURS_PAL_*` are likewise `*_Ctx(inst, ...)` in
+      `colours_ntsc.c`/`colours_pal.c` (pinning `NT`/`PAL` contexts via
+      `COLOURS_NTSC_PIN_CTX`/`COLOURS_PAL_PIN_CTX`), with forwarding macros
+      and state aliases in `colours_ntsc.h`/`colours_pal.h`. Per-instance
+      end-to-end: `colours.c`'s `_Ctx` bodies call the NTSC/PAL `_Ctx`
+      functions with their own instance. Transitional (still default-instance
+      via header aliases): `filter_ntsc.c` (`COLOURS_NTSC_GetYIQ`/`_setup`/
+      `_external`), `pal_blending.c` (`COLOURS_PAL_GetYUV`/`_setup`/
+      `_external`), `ui.c`, `sdl/input.c`, `atari.c`, `cfg.c`, the codecs
+      (`Colours_GetR/G/B` over `Colours_table`), `atari_ntsc/atari_ntsc.c`,
+      and `atari_x11.c`. Build passes; 20 s no-disk smoke run clean (no
+      CIM); Acid800 results identical to the pre-refactor baseline.
+- [x] Move state (Colours): `Colours_setup`/`Colours_external` (the
+      TV-system-selected pointers), `COLOURS_NTSC_setup`,
+      `COLOURS_NTSC_external`, `COLOURS_PAL_setup`, `COLOURS_PAL_external`.
+      Done 2026-09-16: `Colours_state_t` defined in
+      [`src/instance.h`](src/instance.h) (ntsc/pal setup + external palette
+      structs, plus the `setup`/`external` pointers into them) and
+      **embedded by value** in `Atari800_Instance` (`.colours`); the header
+      aliases point at `Atari800_default->colours.*`. Defaults match the
+      old static initialisers via zero-init (`filename = ""`,
+      `loaded/adjust = FALSE`); the non-zero defaults (NTSC
+      `color_delay = 26.8`, PAL `color_delay = 23.2`) are applied by
+      `Colours_PreInitialise_Ctx` at startup, as before. **Exception:**
+      `Colours_table[256]` stays a real file-scope global in `colours.c`
+      *(shared/transitional)* — `sdl/palette.c` references it from a static
+      initialiser (`{ Colours_table, 256 }`), which cannot dereference
+      `Atari800_default`; same consideration as `AF80_palette`/
+      `BIT3_palette`. It must become per-instance together with the
+      platform palette modules (Phase 6).
 - [ ] **Videomode** — [`src/videomode.h`](src/videomode.h): `VIDEOMODE_*` functions
-      and state.
-- [ ] **Pal_blending** — [`src/pal_blending.h`](src/pal_blending.h):
-      `PAL_BLENDING_*` functions.
-- [ ] **Filter_ntsc** — [`src/filter_ntsc.h`](src/filter_ntsc.h): `FILTER_NTSC_*`
-      functions; state `FILTER_NTSC_setup`, `FILTER_NTSC_emu`.
-- [ ] **Artifact** — [`src/artifact.h`](src/artifact.h): `ARTIFACT_*` functions
-      and state.
+      and state. **Deferred (host-display state):** `videomode.c` (1271 lines,
+      ~300 external call sites) is the host display's geometry/resolution
+      manager — it owns the fullscreen resolution list (from
+      `PLATFORM_AvailableResolutions`), the window size, and drives
+      `PLATFORM_SetVideoMode`. These are single-host-device concerns, not
+      per-machine state; converting it before the platform ports (Phase 6)
+      would produce a misleading per-instance split. Revisit together with the
+      SDL/platform layer, where `Screen_atari`/`Colours_table` static-init
+      references must also be resolved.
+- [x] **Pal_blending** — [`src/pal_blending.h`](src/pal_blending.h):
+      `PAL_BLENDING_UpdateLookup`, `PAL_BLENDING_Blit16/32`,
+      `PAL_BLENDING_BlitScaled16/32`.
+      Done 2026-09-16: each is now
+      `PAL_BLENDING_*_Ctx(Atari800_Instance *inst, ...)` in `pal_blending.c`,
+      pinning the file-scope context (`PL = &inst->pal_blending`,
+      `PLi = inst`) via `PAL_BLENDING_PIN_CTX(inst)`; the state aliases
+      (`palette`, `shift_mask`) inside `pal_blending.c` route through `PL`.
+      In `pal_blending.h` the legacy names are forwarding macros passing
+      `Atari800_default`. Per-instance end-to-end: the `_Ctx` bodies
+      `#undef` and re-point `ARTIFACT_mode` to `PLi->artifact.mode`,
+      `COLOURS_PAL_setup`/`COLOURS_PAL_external` to `PLi->colours.pal_*`,
+      and call `COLOURS_PAL_GetYUV_Ctx(PLi, ...)`. Transitional (still
+      default-instance): the `PLATFORM_*` pixel-format calls (host device,
+      Phase 6). Build passes; 20 s no-disk smoke run clean; Acid800 results
+      identical to the pre-refactor baseline.
+- [x] Move state (Pal_blending): the `palette` union (16/32-BPP lookup
+      tables, 2×256 entries) and `shift_mask`.
+      Done 2026-09-16: `Pal_blending_state_t` (with `Pal_blending_palette_t`)
+      defined in [`src/instance.h`](src/instance.h) and **embedded by value**
+      in `Atari800_Instance` (`.pal_blending`); defaults (all zero) match the
+      old static initialisers via zero-init.
+- [x] **Filter_ntsc** — [`src/filter_ntsc.h`](src/filter_ntsc.h):
+      `FILTER_NTSC_Update`, `FILTER_NTSC_RestoreDefaults`,
+      `FILTER_NTSC_SetPreset`, `FILTER_NTSC_GetPreset`,
+      `FILTER_NTSC_NextPreset`, `FILTER_NTSC_PreInitialise`,
+      `FILTER_NTSC_ReadConfig`, `FILTER_NTSC_WriteConfig`,
+      `FILTER_NTSC_Initialise`; state `FILTER_NTSC_setup`, `FILTER_NTSC_emu`.
+      Done 2026-09-16: each is now
+      `FILTER_NTSC_*_Ctx(Atari800_Instance *inst, ...)` in `filter_ntsc.c`,
+      pinning the file-scope context (`FN = &inst->filter_ntsc`,
+      `FNi = inst`) via `FILTER_NTSC_PIN_CTX(inst)`; the state aliases inside
+      `filter_ntsc.c` route through `FN`. In `filter_ntsc.h` the legacy names
+      are forwarding macros passing `Atari800_default`. Include-cycle note:
+      `instance.h` includes `filter_ntsc.h` (for the `atari_ntsc_setup_t`/
+      `atari_ntsc_t` types used by `Filter_ntsc_state_t`), so `filter_ntsc.h`
+      forward-declares `struct Atari800_Instance` before including
+      `instance.h`. Exceptions: `FILTER_NTSC_New`/`FILTER_NTSC_Delete` are
+      stateless (malloc/free) and keep their signatures. Per-instance
+      end-to-end: the `_Ctx` bodies `#undef` and re-point
+      `COLOURS_NTSC_setup`/`COLOURS_NTSC_external` to
+      `FNi->colours.ntsc_*` and call `COLOURS_NTSC_GetYIQ_Ctx(FNi, ...)`.
+      Transitional (still default-instance via header aliases): `atari.c`,
+      `cfg.c`, `ui.c`, `sdl/video.c`, `sdl/video_sw.c`, `sdl/video_gl.c`,
+      `sdl/input.c`. **Note:** `atari_rpi.c` self-declares its own
+      `FILTER_NTSC_emu`/`FILTER_NTSC_setup` globals and no-op
+      `FILTER_NTSC_Update`/`NextPreset` stubs without including
+      `filter_ntsc.h` — it will need updating in Phase 6 (not part of the
+      Linux build). Build passes; 20 s no-disk smoke run clean; Acid800
+      results identical to the pre-refactor baseline.
+- [x] Move state (Filter_ntsc): `FILTER_NTSC_setup` (the
+      `atari_ntsc_setup_t` controls) and `FILTER_NTSC_emu` (the allocated
+      filter pointer).
+      Done 2026-09-16: `Filter_ntsc_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.filter_ntsc`); defaults (zeroed setup, NULL
+      emu) match the old static initialisers via zero-init
+      (`FILTER_NTSC_PreInitialise_Ctx` applies the composite preset at
+      startup, as before). The `presets[]` and `preset_cfg_strings[]`
+      tables stay file-scope `static const` *(shared, read-only)*.
+- [x] **Artifact** — [`src/artifact.h`](src/artifact.h): `ARTIFACT_Set`,
+      `ARTIFACT_SetTVMode`, `ARTIFACT_WriteConfig`, `ARTIFACT_ReadConfig`,
+      `ARTIFACT_Initialise`; state `ARTIFACT_mode` (+ per-TV-system
+      `mode_ntsc`/`mode_pal` internals).
+      Done 2026-09-16: each is now
+      `ARTIFACT_*_Ctx(Atari800_Instance *inst, ...)` in `artifact.c`, pinning
+      the file-scope context (`AR = &inst->artifact`, `ARi = inst`) via
+      `ARTIFACT_PIN_CTX(inst)`; the state aliases inside `artifact.c` route
+      through `AR`. Include-cycle note: `instance.h` includes `artifact.h`
+      (for the `ARTIFACT_t` enum used by `Artifact_state_t`), so `artifact.h`
+      forward-declares `struct Atari800_Instance` for the `_Ctx` prototypes
+      *before* including `instance.h`; the `ARTIFACT_mode` alias and
+      forwarding macros come after. Per-instance end-to-end: the `_Ctx`
+      bodies `#undef` the ANTIC aliases (`ANTIC_artif_mode`, `ANTIC_artif_new`,
+      `ANTIC_pal_blending`, `ANTIC_UpdateArtifacting`) and re-point them to
+      `ARi->antic.*` / `ANTIC_UpdateArtifacting_Ctx(ARi)`. Transitional
+      (still default-instance): `Atari800_tv_mode` (top-level config, §4.4)
+      and the `VIDEOMODE_Update()` call under NTSC_FILTER &&
+      SUPPORTS_CHANGE_VIDEOMODE (Videomode deferred above). Callers in
+      `atari.c`, `cfg.c`, `ui.c`, `pal_blending.c` and `sdl/video*.c` go
+      through the forwarding macros (transitional). Build passes; 20 s no-disk
+      smoke run clean; Acid800 results identical to the pre-refactor baseline.
+- [x] Move state (Artifact): `ARTIFACT_mode` plus the previously file-scope
+      statics `mode_ntsc`/`mode_pal`.
+      Done 2026-09-16: `Artifact_state_t` defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.artifact`); `artifact.h` aliases `ARTIFACT_mode`
+      to `Atari800_default->artifact.mode`. Defaults (all `ARTIFACT_NONE`,
+      i.e. 0) match the old static initialisers via zero-init. The
+      `mode_cfg_strings[]` table stays file-scope `static const`
+      *(shared, read-only)*.
 - [ ] **File_export** — [`src/file_export.h`](src/file_export.h): `FILE_EXPORT_*`
-      functions and state.
+      functions and state. **Deferred (host-output state):** `file_export.c` is
+      tightly coupled to the `codecs/` subsystem — `container`,
+      `audio_codec`, `video_codec`, `image_codec`, `video_frame_count`, `fps`,
+      `byteswritten`, and `description` are file-scope globals in
+      `src/codecs/container.c`/`audio.c`/`video.c`/`image.c`, none of which are
+      instance-aware yet. File_export's own state is small (`error_msg`,
+      `FILE_EXPORT_compression_level`, the sound/video filename patterns and
+      counters under AUDIO_RECORDING/VIDEO_RECORDING/SCREENSHOTS), but
+      converting it before the codecs would produce a misleading per-instance
+      split (recording is a host-output concern: one encoder pipeline, one
+      output file). Revisit together with Sound/Pokeysnd (§4.3) and the
+      codecs subsystem (a new §4.8-style work item), or with the platform
+      layer (Phase 6). Note: `Screen_SaveScreenshot_Ctx`/`SaveNextScreenshot_Ctx`
+      call `File_Export_*` via the legacy names (transitional: default
+      instance), and `File_Export_WriteAudio`/`WriteVideo` are called from the
+      sound/video paths (`pokeysnd.c`, `sdl/video*.c`) — all transitional.
 
 ### 4.3 Sound
 
@@ -1072,21 +1232,67 @@ refactor. It is the working companion to
 
 ### 4.4 Top-level driver — [`src/atari.h`](src/atari.h), [`src/atari.c`](src/atari.c)
 
-- [ ] Convert: `Atari800_Initialise`, `Atari800_Frame`, `Atari800_Coldstart`,
-      `Atari800_Warmstart`, `Atari800_InitialiseMachine`, `Atari800_Exit`,
-      `Atari800_ErrExit`, `Atari800_Sync`, `Atari800_LoadImage`,
-      `Atari800_StateSave`, `Atari800_StateRead`, `Atari800_SetTVMode`,
-      `Atari800_SetMachineType`, `Atari800_UpdateJumper`,
-      `Atari800_UpdateKeyboardDetached`.
-- [ ] Move state: `Atari800_machine_type`, `Atari800_builtin_basic`,
+> **Status: done (2026-09-18).** All per-instance driver state now lives in
+> `Atari800_Instance` (the top-level config fields were already declared there;
+> the driver internals `refresh_counter`, `sync_lasttime`,
+> `last_display_screen_time`, `afs_lastframe/afs_discard/afs_lasttime/
+> afs_sleeptime`, and `benchmark_start_time` (BENCHMARK) were added). Build
+> passes; 20 s no-disk smoke run clean (no CIM); Acid800 results identical to
+> the pre-refactor baseline (23 success / 28 expected failures / 2 skipped;
+> the 2 FAILs — "MMU: XL banking" and "suite totals changed" — are
+> pre-existing, see [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
+
+- [x] Convert: `Atari800_Frame`, `Atari800_Coldstart`, `Atari800_Warmstart`,
+      `Atari800_InitialiseMachine`, `Atari800_Sync`, `Atari800_StateSave`,
+      `Atari800_StateRead`, `Atari800_SetTVMode`, `Atari800_SetMachineType`,
+      `Atari800_UpdateJumper`, `Atari800_UpdateKeyboardDetached`.
+      Done 2026-09-18: each is now
+      `Atari800_*_Ctx(Atari800_Instance *inst, ...)` in `atari.c`, pinning the
+      file-scope context (`AI = inst`) via `ATARI_PIN_CTX(inst)`; the legacy
+      names — this module's own state and the chip/peripheral aliases pulled
+      in from the module headers (`MEMORY_*`, `GTIA_*`, `ANTIC_*`, `POKEY_*`,
+      `PIA_Reset`, `PBI_Reset`, `CARTRIDGE_ColdStart`, `ESC_ClearAll`,
+      `Devices_*`, `Colours_*`, `ARTIFACT_*`, `AF80_*`, `BIT3_*`, `INPUT_*`,
+      `Screen_*`, `PBI_BB_Frame`) — are `#undef`'ed and re-pointed to `AI`
+      inside `atari.c`, so the `_Ctx` bodies operate on their own instance.
+      In `atari.h` the legacy names are forwarding macros passing
+      `Atari800_default`. **Include-cycle note:** `instance.h` includes
+      `atari.h`, so `atari.h` cannot include `instance.h`; instead `atari.h`
+      forward-declares `struct Atari800_Instance` and declares
+      `extern struct Atari800_Instance *Atari800_default` (the canonical
+      declaration — `instance.h` no longer redeclares it, avoiding
+      `-Wredundant-decls`), and the alias macros expand to
+      `Atari800_default->...`. TUs that use the aliases need the complete
+      struct type, i.e. `instance.h` transitively (all in-tree TUs get it).
+      Exceptions: `Atari800_Initialise`, `Atari800_Exit`, `Atari800_ErrExit`
+      remain process-level functions (they drive config parsing, the platform
+      layer, and the still-transitional module init/exit calls); they pin `AI`
+      to the default instance at entry. `Atari800_LoadImage` is stateless
+      (signature unchanged). The BASIC/VERY_SLOW/CURSES_BASIC-only
+      `basic_frame`/`basic_antic_scanline` helpers still use the
+      default-instance aliases (not part of the Linux build; revisit if those
+      builds are needed per-instance). The multi-instance lifecycle wrappers
+      (`Atari800_FrameInstance`/`ColdstartInstance`/`WarmstartInstance`,
+      §1.4) are implemented as thin wrappers over the `_Ctx` functions.
+- [x] Move state: `Atari800_machine_type`, `Atari800_builtin_basic`,
       `Atari800_keyboard_leds`, `Atari800_f_keys`, `Atari800_jumper`,
       `Atari800_builtin_game`, `Atari800_keyboard_detached`, `Atari800_tv_mode`,
       `Atari800_disable_basic`, `Atari800_os_version`, `Atari800_display_screen`,
       `Atari800_nframes`, `Atari800_refresh_rate`,
       `Atari800_collisions_in_skipped_frames`, `Atari800_turbo`,
       `Atari800_turbo_speed`, `Atari800_start_in_monitor`,
-      `Atari800_auto_frameskip`.
-- [ ] Keep shared: `verbose`, `sigint_flag`, `dl_dir` (process-global).
+      `Atari800_auto_frameskip`, plus the driver internals listed in the
+      status note above.
+      Done 2026-09-18: all moved into `Atari800_Instance`
+      ([`src/instance.h`](src/instance.h)); `atari.c`/`atari.h` alias the
+      legacy names to `Atari800_default->...`. Non-zero defaults preserved in
+      the `default_instance_storage` initializer in `atari.c`
+      (`machine_type = Atari800_MACHINE_XLXE`, `builtin_basic = TRUE`,
+      `tv_mode = Atari800_TV_PAL`, `disable_basic = TRUE`,
+      `os_version = -1`, `refresh_rate = 1`); the rest match the old static
+      initialisers via zero-init.
+- [x] Keep shared: `verbose`, `sigint_flag`, `dl_dir` (process-global) —
+      still file-scope globals in `atari.c`.
 
 ### 4.5 State save/load — [`src/statesav.h`](src/statesav.h), [`src/statesav.c`](src/statesav.c)
 

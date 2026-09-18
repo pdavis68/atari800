@@ -3,19 +3,40 @@
 
 #include "config.h"
 #include "atari.h"
+#include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 
-int StateSav_SaveAtariState(const char *filename, const char *mode, UBYTE SaveVerbose);
-int StateSav_ReadAtariState(const char *filename, const char *mode);
+/* Option C refactor (docs/refactor-checklist.md §4.5): the state save/read
+   stream is per-instance (Statesav_state_t, embedded in Atari800_Instance).
+   Each public function takes the instance whose stream it operates on; the
+   legacy un-suffixed names below are forwarding macros that route to
+   Atari800_default, so not-yet-migrated callers keep working unchanged. */
 
-void StateSav_SaveUBYTE(const UBYTE *data, int num);
-void StateSav_SaveUWORD(const UWORD *data, int num);
-void StateSav_SaveINT(const int *data, int num);
-void StateSav_SaveFNAME(const char *filename);
+int StateSav_SaveAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode, UBYTE SaveVerbose);
+int StateSav_ReadAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode);
+#define StateSav_SaveAtariState(filename, mode, SaveVerbose) \
+	StateSav_SaveAtariState_Ctx(Atari800_default, (filename), (mode), (SaveVerbose))
+#define StateSav_ReadAtariState(filename, mode) \
+	StateSav_ReadAtariState_Ctx(Atari800_default, (filename), (mode))
 
-void StateSav_ReadUBYTE(UBYTE *data, int num);
-void StateSav_ReadUWORD(UWORD *data, int num);
-void StateSav_ReadINT(int *data, int num);
-void StateSav_ReadFNAME(char *filename);
+void StateSav_SaveUBYTE_Ctx(Atari800_Instance *inst, const UBYTE *data, int num);
+void StateSav_SaveUWORD_Ctx(Atari800_Instance *inst, const UWORD *data, int num);
+void StateSav_SaveINT_Ctx(Atari800_Instance *inst, const int *data, int num);
+void StateSav_SaveFNAME_Ctx(Atari800_Instance *inst, const char *filename);
+
+void StateSav_ReadUBYTE_Ctx(Atari800_Instance *inst, UBYTE *data, int num);
+void StateSav_ReadUWORD_Ctx(Atari800_Instance *inst, UWORD *data, int num);
+void StateSav_ReadINT_Ctx(Atari800_Instance *inst, int *data, int num);
+void StateSav_ReadFNAME_Ctx(Atari800_Instance *inst, char *filename);
+
+#define StateSav_SaveUBYTE(data, num)   StateSav_SaveUBYTE_Ctx(Atari800_default, (data), (num))
+#define StateSav_SaveUWORD(data, num)   StateSav_SaveUWORD_Ctx(Atari800_default, (data), (num))
+#define StateSav_SaveINT(data, num)     StateSav_SaveINT_Ctx(Atari800_default, (data), (num))
+#define StateSav_SaveFNAME(filename)    StateSav_SaveFNAME_Ctx(Atari800_default, (filename))
+
+#define StateSav_ReadUBYTE(data, num)   StateSav_ReadUBYTE_Ctx(Atari800_default, (data), (num))
+#define StateSav_ReadUWORD(data, num)   StateSav_ReadUWORD_Ctx(Atari800_default, (data), (num))
+#define StateSav_ReadINT(data, num)     StateSav_ReadINT_Ctx(Atari800_default, (data), (num))
+#define StateSav_ReadFNAME(filename)    StateSav_ReadFNAME_Ctx(Atari800_default, (filename))
 
 #ifdef LIBATARI800
 ULONG StateSav_Tell(void);

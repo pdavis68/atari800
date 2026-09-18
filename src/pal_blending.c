@@ -28,6 +28,7 @@
 #include "atari.h"
 #include "colours.h"
 #include "colours_pal.h"
+#include "instance.h"
 #include "platform.h"
 #include "screen.h"
 
@@ -35,15 +36,31 @@
 #include "videomode.h"
 #endif /* SUPPORTS_CHANGE_VIDEOMODE */
 
-static union {
-	UWORD bpp16[2][256];	/* 16-bit palette */
-	ULONG bpp32[2][256];	/* 32-bit palette */
-} palette;
+/* Per-instance context: pinned by PAL_BLENDING_PIN_CTX() at each entry point. */
+static Pal_blending_state_t *PL;
+static struct Atari800_Instance *PLi;
 
-static ULONG shift_mask;
+#define PAL_BLENDING_PIN_CTX(inst) do { \
+	PL = &(inst)->pal_blending; \
+	PLi = (inst); \
+} while (0)
 
-void PAL_BLENDING_UpdateLookup(void)
+/* Re-point the state aliases to this instance. */
+#undef ARTIFACT_mode
+#define ARTIFACT_mode (PLi->artifact.mode)
+#undef COLOURS_PAL_setup
+#undef COLOURS_PAL_external
+#define COLOURS_PAL_setup    (PLi->colours.pal_setup)
+#define COLOURS_PAL_external (PLi->colours.pal_external)
+#undef COLOURS_PAL_GetYUV
+#define COLOURS_PAL_GetYUV(yuv_table) COLOURS_PAL_GetYUV_Ctx(PLi, (yuv_table))
+
+#define palette    (PL->palette)
+#define shift_mask (PL->shift_mask)
+
+void PAL_BLENDING_UpdateLookup_Ctx(struct Atari800_Instance *inst)
 {
+	PAL_BLENDING_PIN_CTX(inst);
 	if (ARTIFACT_mode == ARTIFACT_PAL_BLEND) {
 		double yuv_table[256*5];
 		int even_pal[256];
@@ -98,8 +115,9 @@ void PAL_BLENDING_UpdateLookup(void)
 	}
 }
 
-void PAL_BLENDING_Blit16(ULONG *dest, UBYTE *src, int pitch, int width, int height, int start_odd)
+void PAL_BLENDING_Blit16_Ctx(struct Atari800_Instance *inst, ULONG *dest, UBYTE *src, int pitch, int width, int height, int start_odd)
 {
+	PAL_BLENDING_PIN_CTX(inst);
 	register ULONG quad, quad_prev;
 	register UBYTE c;
 	register int pos;
@@ -137,8 +155,9 @@ void PAL_BLENDING_Blit16(ULONG *dest, UBYTE *src, int pitch, int width, int heig
 	}
 }
 
-void PAL_BLENDING_Blit32(ULONG *dest, UBYTE *src, int pitch, int width, int height, int start_odd)
+void PAL_BLENDING_Blit32_Ctx(struct Atari800_Instance *inst, ULONG *dest, UBYTE *src, int pitch, int width, int height, int start_odd)
 {
+	PAL_BLENDING_PIN_CTX(inst);
 	register ULONG quad, quad_prev;
 	register UBYTE c;
 	register int pos;
@@ -167,8 +186,9 @@ void PAL_BLENDING_Blit32(ULONG *dest, UBYTE *src, int pitch, int width, int heig
 	}
 }
 
-void PAL_BLENDING_BlitScaled16(ULONG *dest, UBYTE *src, int pitch, int width, int height, int dest_width, int dest_height, int start_odd)
+void PAL_BLENDING_BlitScaled16_Ctx(struct Atari800_Instance *inst, ULONG *dest, UBYTE *src, int pitch, int width, int height, int dest_width, int dest_height, int start_odd)
 {
+	PAL_BLENDING_PIN_CTX(inst);
 	register ULONG quad, quad_prev;
 	register int x;
 	int y = 0x10000;
@@ -217,8 +237,9 @@ void PAL_BLENDING_BlitScaled16(ULONG *dest, UBYTE *src, int pitch, int width, in
 	}
 }
 
-void PAL_BLENDING_BlitScaled32(ULONG *dest, UBYTE *src, int pitch, int width, int height, int dest_width, int dest_height, int start_odd)
+void PAL_BLENDING_BlitScaled32_Ctx(struct Atari800_Instance *inst, ULONG *dest, UBYTE *src, int pitch, int width, int height, int dest_width, int dest_height, int start_odd)
 {
+	PAL_BLENDING_PIN_CTX(inst);
 	register ULONG quad, quad_prev;
 	register int x;
 	int y = 0x10000;

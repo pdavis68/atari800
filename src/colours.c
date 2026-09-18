@@ -42,8 +42,21 @@
 #define M_PI		3.14159265358979323846
 #endif
 
-Colours_setup_t *Colours_setup;
-COLOURS_EXTERNAL_t *Colours_external;
+/* Per-instance context (Option C transitional pattern): the _Ctx entry
+   points pin the file-scope context below; the legacy state names are
+   re-pointed to the pinned instance's Colours_state_t. Colours_table stays
+   a real file-scope global (shared/transitional) because sdl/palette.c
+   references it from a static initialiser. */
+static Atari800_Instance *COI;
+static Colours_state_t *CO;
+
+#undef Colours_setup
+#undef Colours_external
+#define Colours_setup    (CO->setup)
+#define Colours_external (CO->external)
+
+#define COLOURS_PIN_CTX(inst) \
+	do { COI = (inst); CO = &COI->colours; } while (0)
 
 /* The NTSC and PAL TV systems maintain that the gamma factor of CRT TV
    receivers should be 2.5 and 2.8, respectively. However, typical CRT TVs
@@ -65,8 +78,9 @@ static char const * const preset_cfg_strings[COLOURS_PRESET_SIZE] = {
 
 int Colours_table[256];
 
-void Colours_SetRGB(int i, int r, int g, int b, int *colortable_ptr)
+void Colours_SetRGB_Ctx(Atari800_Instance *inst, int i, int r, int g, int b, int *colortable_ptr)
 {
+	(void) inst; /* stateless */
 	if (r < 0)
 		r = 0;
 	else if (r > 255)
@@ -134,16 +148,16 @@ double Colours_Linear2sRGB(double c)
 		return 1.055 * pow(c, 1.0/2.4) - 0.055;
 }
 
-static void UpdateModeDependentPointers(int tv_mode)
+static void UpdateModeDependentPointers_Ctx(Atari800_Instance *inst, int tv_mode)
 {
 	/* Set pointers to the current setup and external palette. */
 	if (tv_mode == Atari800_TV_NTSC) {
-		Colours_setup = &COLOURS_NTSC_setup;
-		Colours_external = &COLOURS_NTSC_external;
+		Colours_setup = &CO->ntsc_setup;
+		Colours_external = &CO->ntsc_external;
 	}
        	else if (tv_mode == Atari800_TV_PAL) {
-		Colours_setup = &COLOURS_PAL_setup;
-		Colours_external = &COLOURS_PAL_external;
+		Colours_setup = &CO->pal_setup;
+		Colours_external = &CO->pal_external;
 	}
 	else {
 		Atari800_ErrExit();
@@ -152,69 +166,73 @@ static void UpdateModeDependentPointers(int tv_mode)
 	}
 }
 
-void Colours_SetVideoSystem(int mode)
+void Colours_SetVideoSystem_Ctx(Atari800_Instance *inst, int mode)
 {
-	UpdateModeDependentPointers(mode);
+	COLOURS_PIN_CTX(inst);
+	UpdateModeDependentPointers_Ctx(inst, mode);
 	/* Apply changes */
-	Colours_Update();
+	Colours_Update_Ctx(inst);
 }
 
 /* Copies the loaded external palette into current palette - without applying
    adjustments. */
-static void CopyExternalWithoutAdjustments(void)
+static void CopyExternalWithoutAdjustments_Ctx(Atari800_Instance *inst)
 {
 	int i;
 	unsigned char *ext_ptr;
 	for (i = 0, ext_ptr = Colours_external->palette; i < 256; i ++, ext_ptr += 3)
-		Colours_SetRGB(i, *ext_ptr, *(ext_ptr + 1), *(ext_ptr + 2), Colours_table);
+		Colours_SetRGB_Ctx(inst, i, *ext_ptr, *(ext_ptr + 1), *(ext_ptr + 2), Colours_table);
 }
 
 /* Updates contents of Colours_table. */
-static void UpdatePalette(void)
+static void UpdatePalette_Ctx(Atari800_Instance *inst)
 {
 	if (Colours_external->loaded && !Colours_external->adjust)
-		CopyExternalWithoutAdjustments();
+		CopyExternalWithoutAdjustments_Ctx(inst);
 	else if (Atari800_tv_mode == Atari800_TV_NTSC)
-		COLOURS_NTSC_Update(Colours_table);
+		COLOURS_NTSC_Update_Ctx(inst, Colours_table);
 	else /* PAL */
-		COLOURS_PAL_Update(Colours_table);
+		COLOURS_PAL_Update_Ctx(inst, Colours_table);
 }
 
-void Colours_Update(void)
+void Colours_Update_Ctx(Atari800_Instance *inst)
 {
-	UpdatePalette();
+	COLOURS_PIN_CTX(inst);
+	UpdatePalette_Ctx(inst);
 #if SUPPORTS_PLATFORM_PALETTEUPDATE
 	PLATFORM_PaletteUpdate();
 #endif
 }
 
-void Colours_RestoreDefaults(void)
+void Colours_RestoreDefaults_Ctx(Atari800_Instance *inst)
 {
-	Colours_SetPreset(COLOURS_PRESET_STANDARD);
+	Colours_SetPreset_Ctx(inst, COLOURS_PRESET_STANDARD);
 }
 
 /* Sets the video calibration profile to the user preference */
-void Colours_SetPreset(Colours_preset_t preset)
+void Colours_SetPreset_Ctx(Atari800_Instance *inst, Colours_preset_t preset)
 {
+	COLOURS_PIN_CTX(inst);
 	if (preset < COLOURS_PRESET_CUSTOM) {
 		*Colours_setup = presets[preset];
-		if (Atari800_tv_mode == Atari800_TV_NTSC) 
-			COLOURS_NTSC_RestoreDefaults();
+		if (Atari800_tv_mode == Atari800_TV_NTSC)
+			COLOURS_NTSC_RestoreDefaults_Ctx(inst);
 		else
-			COLOURS_PAL_RestoreDefaults();
+			COLOURS_PAL_RestoreDefaults_Ctx(inst);
 	}
 }
 
 /* Compares the current settings to the available calibration profiles
    and returns the matching profile -- or CUSTOM if no match is found */
-Colours_preset_t Colours_GetPreset(void)
+Colours_preset_t Colours_GetPreset_Ctx(Atari800_Instance *inst)
 {
 	int i;
 
+	COLOURS_PIN_CTX(inst);
 	if ((Atari800_tv_mode == Atari800_TV_NTSC &&
-	     COLOURS_NTSC_GetPreset() != COLOURS_PRESET_STANDARD) ||
+	     COLOURS_NTSC_GetPreset_Ctx(inst) != COLOURS_PRESET_STANDARD) ||
 	    (Atari800_tv_mode == Atari800_TV_PAL &&
-	     COLOURS_PAL_GetPreset() != COLOURS_PRESET_STANDARD))
+	     COLOURS_PAL_GetPreset_Ctx(inst) != COLOURS_PRESET_STANDARD))
 		return COLOURS_PRESET_CUSTOM;
 
 	for (i = 0; i < COLOURS_PRESET_SIZE; i ++) {
@@ -230,8 +248,9 @@ Colours_preset_t Colours_GetPreset(void)
 	return COLOURS_PRESET_CUSTOM;
 }
 
-int Colours_Save(const char *filename)
+int Colours_Save_Ctx(Atari800_Instance *inst, const char *filename)
 {
+	COLOURS_PIN_CTX(inst);
 	FILE *fp;
 	int i;
 
@@ -256,34 +275,39 @@ int Colours_Save(const char *filename)
 	return TRUE;
 }
 
-void Colours_PreInitialise(void)
+void Colours_PreInitialise_Ctx(Atari800_Instance *inst)
 {
+	COLOURS_PIN_CTX(inst);
 	/* Copy the default setup for both NTSC and PAL. */
-	COLOURS_NTSC_setup = COLOURS_PAL_setup = presets[COLOURS_PRESET_STANDARD];
-	COLOURS_NTSC_RestoreDefaults();
-	COLOURS_PAL_RestoreDefaults();
+	CO->ntsc_setup = CO->pal_setup = presets[COLOURS_PRESET_STANDARD];
+	COLOURS_NTSC_RestoreDefaults_Ctx(inst);
+	COLOURS_PAL_RestoreDefaults_Ctx(inst);
 }
 
-int Colours_ReadConfig(char *option, char *ptr)
+int Colours_ReadConfig_Ctx(Atari800_Instance *inst, char *option, char *ptr)
 {
-	if (COLOURS_NTSC_ReadConfig(option, ptr)) {
+	COLOURS_PIN_CTX(inst);
+	if (COLOURS_NTSC_ReadConfig_Ctx(inst, option, ptr)) {
 	}
-	else if (COLOURS_PAL_ReadConfig(option, ptr)) {
+	else if (COLOURS_PAL_ReadConfig_Ctx(inst, option, ptr)) {
 	}
 	else return FALSE; /* no match */
 	return TRUE; /* matched something */
 }
 
-void Colours_WriteConfig(FILE *fp)
+void Colours_WriteConfig_Ctx(Atari800_Instance *inst, FILE *fp)
 {
-	COLOURS_NTSC_WriteConfig(fp);
-	COLOURS_PAL_WriteConfig(fp);
+	COLOURS_PIN_CTX(inst);
+	COLOURS_NTSC_WriteConfig_Ctx(inst, fp);
+	COLOURS_PAL_WriteConfig_Ctx(inst, fp);
 }
 
-int Colours_Initialise(int *argc, char *argv[])
+int Colours_Initialise_Ctx(Atari800_Instance *inst, int *argc, char *argv[])
 {
 	int i;
 	int j;
+
+	COLOURS_PIN_CTX(inst);
 
 	for (i = j = 1; i < *argc; i++) {
 		int i_a = (i + 1 < *argc);		/* is argument available? */
@@ -291,27 +315,27 @@ int Colours_Initialise(int *argc, char *argv[])
 		
 		if (strcmp(argv[i], "-saturation") == 0) {
 			if (i_a)
-				COLOURS_NTSC_setup.saturation = COLOURS_PAL_setup.saturation = atof(argv[++i]);
+				CO->ntsc_setup.saturation = CO->pal_setup.saturation = atof(argv[++i]);
 			else a_m = TRUE;
 		}
 		else if (strcmp(argv[i], "-contrast") == 0) {
 			if (i_a)
-				COLOURS_NTSC_setup.contrast = COLOURS_PAL_setup.contrast = atof(argv[++i]);
+				CO->ntsc_setup.contrast = CO->pal_setup.contrast = atof(argv[++i]);
 			else a_m = TRUE;
 		}
 		else if (strcmp(argv[i], "-brightness") == 0) {
 			if (i_a)
-				COLOURS_NTSC_setup.brightness = COLOURS_PAL_setup.brightness = atof(argv[++i]);
+				CO->ntsc_setup.brightness = CO->pal_setup.brightness = atof(argv[++i]);
 			else a_m = TRUE;
 		}
 		else if (strcmp(argv[i], "-gamma") == 0) {
 			if (i_a)
-				COLOURS_NTSC_setup.gamma = COLOURS_PAL_setup.gamma = atof(argv[++i]);
+				CO->ntsc_setup.gamma = CO->pal_setup.gamma = atof(argv[++i]);
 			else a_m = TRUE;
 		}
 		else if (strcmp(argv[i], "-tint") == 0) {
 			if (i_a)
-				COLOURS_NTSC_setup.hue = COLOURS_PAL_setup.hue = atof(argv[++i]);
+				CO->ntsc_setup.hue = CO->pal_setup.hue = atof(argv[++i]);
 			else a_m = TRUE;
 		}
 		else if (strcmp(argv[i], "-colors-preset") == 0) {
@@ -321,9 +345,9 @@ int Colours_Initialise(int *argc, char *argv[])
 					Log_print("Invalid value for -colors-preset");
 					return FALSE;
 				}
-				COLOURS_NTSC_setup = COLOURS_PAL_setup = presets[idx];
-				COLOURS_NTSC_RestoreDefaults();
-				COLOURS_PAL_RestoreDefaults();
+				CO->ntsc_setup = CO->pal_setup = presets[idx];
+				COLOURS_NTSC_RestoreDefaults_Ctx(inst);
+				COLOURS_PAL_RestoreDefaults_Ctx(inst);
 			} else a_m = TRUE;
 		}
 
@@ -347,12 +371,12 @@ int Colours_Initialise(int *argc, char *argv[])
 	}
 	*argc = j;
 
-	if (!COLOURS_NTSC_Initialise(argc, argv) ||
-	    !COLOURS_PAL_Initialise(argc, argv))
+	if (!COLOURS_NTSC_Initialise_Ctx(inst, argc, argv) ||
+	    !COLOURS_PAL_Initialise_Ctx(inst, argc, argv))
 		return FALSE;
 
 	/* Assume that Atari800_tv_mode has been already initialised. */
-	UpdateModeDependentPointers(Atari800_tv_mode);
-	UpdatePalette();
+	UpdateModeDependentPointers_Ctx(inst, Atari800_tv_mode);
+	UpdatePalette_Ctx(inst);
 	return TRUE;
 }
