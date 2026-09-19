@@ -28,6 +28,7 @@
 #include "cartridge.h"
 #include "cassette.h"
 #include "binload.h"
+#include "grid.h"
 #include "cfg.h"
 #include "devices.h"
 #include "esc.h"
@@ -154,6 +155,8 @@ int CFG_LoadConfig(const char *alternate_config_filename)
 			Util_trim(ptr);
 
 			if (SYSROM_ReadConfig(string, ptr)) {
+			}
+			else if (GRID_ReadConfig(string, ptr)) {
 			}
 #ifdef BASIC
 			else if (strcmp(string, "ATARI_FILES_DIR") == 0
@@ -397,6 +400,7 @@ int CFG_WriteConfig(void)
 
 	fprintf(fp, "%s\n", Atari800_TITLE);
 	SYSROM_WriteConfig(fp);
+	GRID_WriteConfig(fp);
 #ifndef BASIC
 	for (i = 0; i < UI_n_atari_files_dir; i++)
 		fprintf(fp, "ATARI_FILES_DIR=%s\n", UI_atari_files_dir[i]);

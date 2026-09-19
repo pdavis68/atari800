@@ -50,6 +50,7 @@
 #include "ui_basic.h"
 #endif
 #include "videomode.h"
+#include "../grid.h"
 #include "sdl/video.h"
 #include "sdl/input.h"
 
@@ -190,6 +191,40 @@ int main(int argc, char **argv)
 			exit(0);
 	}
 
+	/* Grid frontend (no-op unless GRID_ENABLED=1). */
+	GRID_Initialise();
+
+	/* Automated smoke test: ATARI800_GRID_SMOKE=1 creates instances,
+	   moves the selection and deletes one, then exits. */
+	if (getenv("ATARI800_GRID_SMOKE") != NULL) {
+		int i, gc, gr;
+		GRID_enabled = TRUE;
+		for (i = 0; i < 4; i++)
+			GRID_AddInstance();
+		GRID_GetDims(&gc, &gr);
+		fprintf(stderr, "grid smoke: count=%d cols=%d rows=%d sel=%d\n",
+		       GRID_Count(), gc, gr, GRID_SelectedIndex());
+		GRID_MoveSelection(GRID_DIR_RIGHT);
+		GRID_MoveSelection(GRID_DIR_RIGHT);
+		GRID_MoveSelection(GRID_DIR_DOWN);
+		GRID_MoveSelection(GRID_DIR_LEFT);
+		fprintf(stderr, "grid smoke: after moves sel=%d\n", GRID_SelectedIndex());
+		GRID_RemoveInstance();
+		GRID_GetDims(&gc, &gr);
+		fprintf(stderr, "grid smoke: after delete count=%d cols=%d rows=%d sel=%d\n",
+		       GRID_Count(), gc, gr, GRID_SelectedIndex());
+		GRID_ToggleMode();
+		fprintf(stderr, "grid smoke: mode=%d\n", GRID_Mode());
+		/* Run some frames on all instances to validate per-instance
+		   emulation (each instance should boot to READY). */
+		for (i = 0; i < 120; i++)
+			GRID_FrameAll();
+		fprintf(stderr, "grid smoke: 120 frames done, selected nframes=%d\n",
+		        Atari800_default->nframes);
+		Atari800_Exit(FALSE);
+		return 0;
+	}
+
 	/* main loop */
 	for (;;) {
 		INPUT_key_code = PLATFORM_Keyboard();
@@ -224,7 +259,10 @@ int main(int argc, char **argv)
 		}
 #endif
 		SDL_INPUT_Mouse();
-		Atari800_Frame();
+		if (GRID_Enabled())
+			GRID_FrameAll();
+		else
+			Atari800_Frame();
 		if (Atari800_display_screen)
 			PLATFORM_DisplayScreen();
 	}

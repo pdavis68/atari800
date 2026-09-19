@@ -42,6 +42,8 @@
 #include "videomode.h"
 #include "xep80.h"
 
+#include "../grid.h"
+#include "sdl/grid.h"
 #include "sdl/input.h"
 #include "sdl/palette.h"
 #include "sdl/video.h"
@@ -327,6 +329,13 @@ int PLATFORM_WindowMaximised(void)
 
 void PLATFORM_DisplayScreen(void)
 {
+	/* Grid mode: compose all instances into their cells. SELECTED_MODE
+	   uses the normal single-instance path (which displays the selected
+	   instance, since the default-instance bridge points at it). */
+	if (GRID_Enabled() && GRID_Mode() == GRID_MODE) {
+		SDL_GRID_DisplayScreen();
+		return;
+	}
 #if HAVE_OPENGL
 	if (SDL_VIDEO_opengl)
 		SDL_VIDEO_GL_DisplayScreen();

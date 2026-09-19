@@ -197,7 +197,8 @@ atari800_SOURCES += \
 	sdl/video.c sdl/video.h \
 	sdl/video_sw.c sdl/video_sw.h \
 	sdl/input.c sdl/input.h \
-	sdl/palette.c sdl/palette.h
+	sdl/palette.c sdl/palette.h \
+	sdl/grid.c sdl/grid.h
 atari800_SOURCES += pbi_proto80.c pbi_proto80.h af80.c af80.h bit3.c bit3.h
 endif
 
@@ -208,7 +209,8 @@ atari800_SOURCES += \
 	sdl/video.c sdl/video.h \
 	sdl/video_sw.c sdl/video_sw.h \
 	sdl/input.c sdl/input.h \
-	sdl/palette.c sdl/palette.h
+	sdl/palette.c sdl/palette.h \
+	sdl/grid.c sdl/grid.h
 atari800_SOURCES += pbi_proto80.c pbi_proto80.h af80.c af80.h bit3.c bit3.h
 endif
 
@@ -231,12 +233,13 @@ endif
 if !WANT_CURSES_BASIC
 # These objects are not compiled when --with-video=no or --enable-cursesbasic=no
 atari800_SOURCES += \
-	artifact.c artifact.h \
-	colours.c colours.h \
-	colours_ntsc.c colours_ntsc.h \
-	colours_pal.c colours_pal.h \
-	colours_external.c colours_external.h \
-	screen.c screen.h
+artifact.c artifact.h \
+colours.c colours.h \
+colours_ntsc.c colours_ntsc.h \
+colours_pal.c colours_pal.h \
+colours_external.c colours_external.h \
+screen.c screen.h \
+grid.c grid.h
 if WANT_NEW_CYCLE_EXACT
 atari800_SOURCES += cycle_map.c cycle_map.h
 endif

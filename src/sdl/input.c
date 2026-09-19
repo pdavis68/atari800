@@ -53,6 +53,8 @@
 #include "platform.h"
 #include "pokey.h"
 #include "sdl/video.h"
+#include "sdl/grid.h"
+#include "../grid.h"
 #include "ui.h"
 #include "util.h"
 #include "videomode.h"
@@ -882,6 +884,8 @@ int SDL_INPUT_ReadConfig(char *option, char *parameters)
 		return SDLKeyBind(&KBD_OSK, parameters);
 	else if (strcmp(option, KEY_SDL"TURBO_KEY") == 0)
 		return SDLKeyBind(&KBD_TURBO, parameters);
+	else if (SDL_GRID_ReadConfig(option, parameters))
+		return TRUE;
 	else
 		return FALSE;
 }
@@ -925,6 +929,7 @@ void SDL_INPUT_WriteConfig(FILE *fp)
 	fprintf(fp, KEY_SDL"ONSCREEN_KEY=%d\n", KBD_OSK);
 	fprintf(fp, KEY_SDL"TURBO_KEY=%d\n", KBD_TURBO);
 
+	SDL_GRID_WriteConfig(fp);
 }
 
 void PLATFORM_SetJoystickKey(int joystick, int direction, int value)
@@ -1624,6 +1629,12 @@ int PLATFORM_Keyboard(void)
 		return AKEY_UI;
 	}
 
+	/* Grid control keys (Shift+F1/F2/F3, Shift+Ctrl+arrows): intercept
+	   before the Atari key-translation path so they are never forwarded
+	   to any instance. */
+	if (SDL_GRID_KeyboardHook(lastkey, INPUT_key_shift, key_control, &key_pressed))
+		return AKEY_NONE;
+
 	/* keyboard joysticks: don't pass the keypresses to emulation
 	 * as some games pause on a keypress (River Raid, Bruce Lee)
 	 */
@@ -2211,6 +2222,7 @@ int SDL_INPUT_Initialise(int *argc, char *argv[])
 	if (!was_config_initialized) {
 		reset_real_js_configs();
 	}
+	SDL_GRID_Initialise();
 
 	for (i = j = 1; i < *argc; i++) {
 #ifdef LPTJOY

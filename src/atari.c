@@ -465,8 +465,98 @@ Atari800_Instance *Atari800_NewInstance(void)
 
 void Atari800_FreeInstance(Atari800_Instance *inst)
 {
-	if (inst != NULL)
-		free(inst);
+	/* The default instance is statically allocated (default_instance_storage)
+	   and must never be freed; the grid frontend may still "delete" it from
+	   its instance list, in which case only the list entry goes away. */
+	if (inst == NULL || inst == &default_instance_storage)
+		return;
+	free(inst);
+}
+
+/* Fully initialise a new instance from the current configuration template
+   (the default instance): machine type, TV mode, RAM size, OS/BASIC ROM
+   selection, colour/artifact setup, then run the per-instance machine init
+   and coldstart so the machine boots to the READY prompt. Used by the grid
+   frontend (src/grid.c) when creating instances. Returns TRUE on success. */
+int Atari800_InitInstanceFromTemplate(Atari800_Instance *inst)
+{
+	Atari800_Instance *tmpl = Atari800_default;
+
+	/* Top-level configuration template. */
+	inst->machine_type = tmpl->machine_type;
+	inst->builtin_basic = tmpl->builtin_basic;
+	inst->keyboard_leds = tmpl->keyboard_leds;
+	inst->f_keys = tmpl->f_keys;
+	inst->jumper = tmpl->jumper;
+	inst->builtin_game = tmpl->builtin_game;
+	inst->keyboard_detached = tmpl->keyboard_detached;
+	inst->tv_mode = tmpl->tv_mode;
+	inst->disable_basic = tmpl->disable_basic;
+	inst->os_version = tmpl->os_version;
+	inst->refresh_rate = tmpl->refresh_rate;
+	inst->auto_frameskip = tmpl->auto_frameskip;
+	inst->collisions_in_skipped_frames = tmpl->collisions_in_skipped_frames;
+	inst->turbo = tmpl->turbo;
+	inst->turbo_speed = tmpl->turbo_speed;
+
+	/* Memory configuration. */
+	inst->memory.ram_size = tmpl->memory.ram_size;
+	inst->memory.enable_mapram = tmpl->memory.enable_mapram;
+	inst->memory.mosaic_num_banks = tmpl->memory.mosaic_num_banks;
+	inst->memory.axlon_0f_mirror = tmpl->memory.axlon_0f_mirror;
+	inst->memory.axlon_num_banks = tmpl->memory.axlon_num_banks;
+
+	/* Peripheral configuration. Mounted disks/cassettes/cartridges are
+	   per-instance runtime state and are deliberately NOT inherited. */
+	inst->devices.enable_h_patch = tmpl->devices.enable_h_patch;
+	inst->devices.enable_p_patch = tmpl->devices.enable_p_patch;
+	inst->devices.enable_r_patch = tmpl->devices.enable_r_patch;
+	inst->devices.enable_b_patch = tmpl->devices.enable_b_patch;
+	inst->esc.enable_sio_patch = tmpl->esc.enable_sio_patch;
+	inst->input = tmpl->input;
+	inst->screen.show_atari_speed = tmpl->screen.show_atari_speed;
+	inst->screen.show_disk_led = tmpl->screen.show_disk_led;
+	inst->screen.show_sector_counter = tmpl->screen.show_sector_counter;
+	inst->screen.show_1200_leds = tmpl->screen.show_1200_leds;
+	inst->screen.show_multimedia_stats = tmpl->screen.show_multimedia_stats;
+
+	/* Colour/artifact setup. */
+	inst->colours.ntsc_setup = tmpl->colours.ntsc_setup;
+	inst->colours.ntsc_external = tmpl->colours.ntsc_external;
+	inst->colours.pal_setup = tmpl->colours.pal_setup;
+	inst->colours.pal_external = tmpl->colours.pal_external;
+	inst->artifact.mode_ntsc = tmpl->artifact.mode_ntsc;
+	inst->artifact.mode_pal = tmpl->artifact.mode_pal;
+	inst->artifact.mode = tmpl->artifact.mode;
+#ifdef NTSC_FILTER
+	inst->filter_ntsc.setup = tmpl->filter_ntsc.setup;
+#endif
+
+	/* Screen buffers (Screen_Initialise allocates these for the default
+	   instance; allocate the equivalents here). */
+	inst->screen.atari = (ULONG *) Util_malloc(Screen_HEIGHT * Screen_WIDTH);
+	memset(inst->screen.atari, 0, Screen_HEIGHT * Screen_WIDTH);
+#ifdef DIRTYRECT
+	inst->screen.dirty = (UBYTE *) Util_malloc(Screen_HEIGHT * Screen_WIDTH / 8);
+	Screen_EntireDirty_Ctx(inst);
+#endif
+#ifdef BITPL_SCR
+	inst->screen.atari_b = (ULONG *) Util_malloc(Screen_HEIGHT * Screen_WIDTH);
+	memset(inst->screen.atari_b, 0, Screen_HEIGHT * Screen_WIDTH);
+	inst->screen.atari1 = inst->screen.atari;
+	inst->screen.atari2 = inst->screen.atari_b;
+#endif
+
+	/* Per-instance palette. */
+	Colours_SetVideoSystem_Ctx(inst, inst->tv_mode);
+	Colours_Update_Ctx(inst);
+	ARTIFACT_SetTVMode_Ctx(inst, inst->tv_mode);
+
+	/* Machine init + coldstart (boots to the READY prompt). */
+	if (!Atari800_InitialiseMachine_Ctx(inst))
+		return FALSE;
+	Atari800_Coldstart_Ctx(inst);
+	return TRUE;
 }
 
 

@@ -164,6 +164,11 @@ int Atari800_InitialiseMachine_Ctx(struct Atari800_Instance *inst);
 #define Atari800_InitialiseMachine() \
 	Atari800_InitialiseMachine_Ctx(Atari800_default)
 
+/* Fully initialise a new instance from the current configuration template
+   (machine type, TV mode, RAM size, ROM selection, machine init +
+   coldstart). Implemented in atari.c; used by the grid frontend. */
+int Atari800_InitInstanceFromTemplate(struct Atari800_Instance *inst);
+
 /* Shuts down Atari800 emulation core and saves the config file if needed.
  * Use it when a user requested exiting/entering a monitor. */
 int Atari800_Exit(int run_monitor);
