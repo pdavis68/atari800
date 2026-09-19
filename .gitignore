@@ -51,3 +51,6 @@
 
 
 *.atr
+.atari800.cfg
+gmon.out
+
