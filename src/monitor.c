@@ -55,6 +55,247 @@
 #include "platform.h"
 #include "statesav.h"
 
+/* ------------------------------------------------------------------ */
+/* Option C context pinning (docs/refactor-checklist.md section 4.6).  */
+/*                                                                    */
+/* The monitor attaches to one instance: MO points at its             */
+/* Monitor_state_t, MI at the instance itself. Every public entry     */
+/* point pins the context via MONITOR_PIN_CTX(); the helper functions */
+/* below operate on the pinned context. The emulator-state macros     */
+/* from the module headers (which alias Atari800_default) are         */
+/* #undef'ed and re-pointed to MI, so the command bodies are          */
+/* unchanged.                                                         */
+/* ------------------------------------------------------------------ */
+static Monitor_state_t *MO;
+static Atari800_Instance *MI;
+
+#define MONITOR_PIN_CTX(inst) \
+	do { MO = &(inst)->monitor; MI = (inst); } while (0)
+
+/* Within this file the legacy names are real _Ctx functions, not the
+   forwarding macros from monitor.h. */
+#undef MONITOR_Run
+#undef MONITOR_Exit
+#undef MONITOR_ShowState
+#ifdef MONITOR_BREAK
+#undef MONITOR_BBRK_on
+#undef MONITOR_BPC
+#endif
+
+/* Monitor break/breakpoint/coverage state: route through the pinned
+   context instead of the default-instance aliases from monitor.h. */
+#ifdef MONITOR_BREAK
+#undef MONITOR_break_addr
+#undef MONITOR_break_step
+#undef MONITOR_break_ret
+#undef MONITOR_break_brk
+#undef MONITOR_ret_nesting
+#define MONITOR_break_addr  (MO->break_addr)
+#define MONITOR_break_step  (MO->break_step)
+#define MONITOR_break_ret   (MO->break_ret)
+#define MONITOR_break_brk   (MO->break_brk)
+#define MONITOR_ret_nesting (MO->ret_nesting)
+#define break_over (MO->break_over)
+#endif
+#ifdef MONITOR_BREAKPOINTS
+#undef MONITOR_breakpoint_table
+#undef MONITOR_breakpoint_table_size
+#undef MONITOR_breakpoints_enabled
+#define MONITOR_breakpoint_table        (MO->breakpoint_table)
+#define MONITOR_breakpoint_table_size   (MO->breakpoint_table_size)
+#define MONITOR_breakpoints_enabled     (MO->breakpoints_enabled)
+#endif
+#ifdef MONITOR_PROFILE
+#undef MONITOR_coverage
+#undef MONITOR_coverage_insns
+#undef MONITOR_coverage_cycles
+#define MONITOR_coverage        (MO->coverage)
+#define MONITOR_coverage_insns  (MO->coverage_insns)
+#define MONITOR_coverage_cycles (MO->coverage_cycles)
+#endif
+
+/* CPU registers and debug buffers. */
+#undef CPU_regPC
+#undef CPU_regA
+#undef CPU_regP
+#undef CPU_regS
+#undef CPU_regY
+#undef CPU_regX
+#undef CPU_cim_encountered
+#define CPU_regPC (MI->cpu.regPC)
+#define CPU_regA  (MI->cpu.regA)
+#define CPU_regP  (MI->cpu.regP)
+#define CPU_regS  (MI->cpu.regS)
+#define CPU_regY  (MI->cpu.regY)
+#define CPU_regX  (MI->cpu.regX)
+#define CPU_cim_encountered (MI->cpu.cim_encountered)
+#ifdef MONITOR_BREAK
+#undef CPU_remember_PC
+#undef CPU_remember_op
+#undef CPU_remember_PC_curpos
+#undef CPU_remember_xpos
+#undef CPU_remember_JMP
+#undef CPU_remember_jmp_curpos
+#define CPU_remember_PC (MI->cpu.remember_PC)
+#define CPU_remember_op (MI->cpu.remember_op)
+#define CPU_remember_PC_curpos (MI->cpu.remember_PC_curpos)
+#define CPU_remember_xpos (MI->cpu.remember_xpos)
+#define CPU_remember_JMP (MI->cpu.remember_JMP)
+#define CPU_remember_jmp_curpos (MI->cpu.remember_jmp_curpos)
+#endif
+#ifdef MONITOR_PROFILE
+#undef CPU_instruction_count
+#define CPU_instruction_count (MI->cpu.instruction_count)
+#endif
+
+/* Top-level config. */
+#undef Atari800_machine_type
+#define Atari800_machine_type (MI->machine_type)
+
+/* Memory access (context-aware accessors on the pinned instance;
+   MEMORY_HwGetByte/MEMORY_HwPutByte remain context-free thunks that
+   pin the default instance -- see the section 1.2 deferral). */
+#undef MEMORY_mem
+#undef MEMORY_SafeGetByte
+#undef MEMORY_GetByte
+#undef MEMORY_PutByte
+#undef MEMORY_dGetByte
+#undef MEMORY_dPutByte
+#undef MEMORY_dGetWord
+#undef MEMORY_dPutWord
+#define MEMORY_mem (MI->memory.mem)
+#define MEMORY_SafeGetByte(addr)   MEMORY_SafeGetByteCtx(&MI->memory, (addr))
+#define MEMORY_GetByte(addr)       MEMORY_GetByteCtx(&MI->memory, (addr), FALSE)
+#define MEMORY_PutByte(addr, byte) MEMORY_PutByteCtx(&MI->memory, (addr), (byte))
+#define MEMORY_dGetByte(x)         MEMORY_dGetByteCtx(&MI->memory, (x))
+#define MEMORY_dPutByte(x, y)      MEMORY_dPutByteCtx(&MI->memory, (x), (y))
+#define MEMORY_dGetWord(x)         MEMORY_dGetWordCtx(&MI->memory, (x))
+#define MEMORY_dPutWord(x, y)      MEMORY_dPutWordCtx(&MI->memory, (x), (y))
+#ifndef PAGED_ATTRIB
+#undef MEMORY_attrib
+#define MEMORY_attrib (MI->memory.attrib)
+#endif
+
+/* ANTIC registers/timing. */
+#undef ANTIC_ypos
+#undef ANTIC_xpos
+#undef ANTIC_break_ypos
+#undef ANTIC_dlist
+#undef ANTIC_DMACTL
+#undef ANTIC_CHACTL
+#undef ANTIC_HSCROL
+#undef ANTIC_VSCROL
+#undef ANTIC_PMBASE
+#undef ANTIC_CHBASE
+#undef ANTIC_NMIEN
+#define ANTIC_ypos (MI->antic.ypos)
+#define ANTIC_xpos (MI->antic.xpos)
+#define ANTIC_break_ypos (MI->antic.break_ypos)
+#define ANTIC_dlist (MI->antic.dlist)
+#define ANTIC_DMACTL (MI->antic.DMACTL)
+#define ANTIC_CHACTL (MI->antic.CHACTL)
+#define ANTIC_HSCROL (MI->antic.HSCROL)
+#define ANTIC_VSCROL (MI->antic.VSCROL)
+#define ANTIC_PMBASE (MI->antic.PMBASE)
+#define ANTIC_CHBASE (MI->antic.CHBASE)
+#define ANTIC_NMIEN (MI->antic.NMIEN)
+
+/* GTIA colour/position/graphics registers. */
+#undef GTIA_HPOSP0
+#undef GTIA_HPOSP1
+#undef GTIA_HPOSP2
+#undef GTIA_HPOSP3
+#undef GTIA_HPOSM0
+#undef GTIA_HPOSM1
+#undef GTIA_HPOSM2
+#undef GTIA_HPOSM3
+#undef GTIA_SIZEP0
+#undef GTIA_SIZEP1
+#undef GTIA_SIZEP2
+#undef GTIA_SIZEP3
+#undef GTIA_SIZEM
+#undef GTIA_GRAFP0
+#undef GTIA_GRAFP1
+#undef GTIA_GRAFP2
+#undef GTIA_GRAFP3
+#undef GTIA_GRAFM
+#undef GTIA_COLPM0
+#undef GTIA_COLPM1
+#undef GTIA_COLPM2
+#undef GTIA_COLPM3
+#undef GTIA_COLPF0
+#undef GTIA_COLPF1
+#undef GTIA_COLPF2
+#undef GTIA_COLPF3
+#undef GTIA_COLBK
+#undef GTIA_PRIOR
+#undef GTIA_VDELAY
+#undef GTIA_GRACTL
+#define GTIA_HPOSP0 (MI->gtia.HPOSP0)
+#define GTIA_HPOSP1 (MI->gtia.HPOSP1)
+#define GTIA_HPOSP2 (MI->gtia.HPOSP2)
+#define GTIA_HPOSP3 (MI->gtia.HPOSP3)
+#define GTIA_HPOSM0 (MI->gtia.HPOSM0)
+#define GTIA_HPOSM1 (MI->gtia.HPOSM1)
+#define GTIA_HPOSM2 (MI->gtia.HPOSM2)
+#define GTIA_HPOSM3 (MI->gtia.HPOSM3)
+#define GTIA_SIZEP0 (MI->gtia.SIZEP0)
+#define GTIA_SIZEP1 (MI->gtia.SIZEP1)
+#define GTIA_SIZEP2 (MI->gtia.SIZEP2)
+#define GTIA_SIZEP3 (MI->gtia.SIZEP3)
+#define GTIA_SIZEM  (MI->gtia.SIZEM)
+#define GTIA_GRAFP0 (MI->gtia.GRAFP0)
+#define GTIA_GRAFP1 (MI->gtia.GRAFP1)
+#define GTIA_GRAFP2 (MI->gtia.GRAFP2)
+#define GTIA_GRAFP3 (MI->gtia.GRAFP3)
+#define GTIA_GRAFM  (MI->gtia.GRAFM)
+#define GTIA_COLPM0 (MI->gtia.COLPM0)
+#define GTIA_COLPM1 (MI->gtia.COLPM1)
+#define GTIA_COLPM2 (MI->gtia.COLPM2)
+#define GTIA_COLPM3 (MI->gtia.COLPM3)
+#define GTIA_COLPF0 (MI->gtia.COLPF0)
+#define GTIA_COLPF1 (MI->gtia.COLPF1)
+#define GTIA_COLPF2 (MI->gtia.COLPF2)
+#define GTIA_COLPF3 (MI->gtia.COLPF3)
+#define GTIA_COLBK  (MI->gtia.COLBK)
+#define GTIA_PRIOR  (MI->gtia.PRIOR)
+#define GTIA_VDELAY (MI->gtia.VDELAY)
+#define GTIA_GRACTL (MI->gtia.GRACTL)
+
+/* POKEY registers. */
+#undef POKEY_KBCODE
+#undef POKEY_IRQST
+#undef POKEY_IRQEN
+#undef POKEY_SKSTAT
+#undef POKEY_SKCTL
+#undef POKEY_AUDF
+#undef POKEY_AUDC
+#undef POKEY_AUDCTL
+#define POKEY_KBCODE (MI->pokey.KBCODE)
+#define POKEY_IRQST  (MI->pokey.IRQST)
+#define POKEY_IRQEN  (MI->pokey.IRQEN)
+#define POKEY_SKSTAT (MI->pokey.SKSTAT)
+#define POKEY_SKCTL  (MI->pokey.SKCTL)
+#define POKEY_AUDF   (MI->pokey.AUDF)
+#define POKEY_AUDC   (MI->pokey.AUDC)
+#define POKEY_AUDCTL (MI->pokey.AUDCTL)
+
+/* PIA registers. */
+#undef PIA_PACTL
+#undef PIA_PBCTL
+#undef PIA_PORTA
+#undef PIA_PORTB
+#define PIA_PACTL (MI->pia.PACTL)
+#define PIA_PBCTL (MI->pia.PBCTL)
+#define PIA_PORTA (MI->pia.PORTA)
+#define PIA_PORTB (MI->pia.PORTB)
+
+/* Cartridge state. */
+#undef CARTRIDGE_main
+#undef CARTRIDGE_piggyback
+#define CARTRIDGE_main     (MI->cartridge.main)
+#define CARTRIDGE_piggyback (MI->cartridge.piggyback)
+
 #ifdef MONITOR_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -950,8 +1191,11 @@ static UWORD show_instruction(FILE *fp, UWORD pc)
 	return pc;
 }
 
-void MONITOR_Exit(void)
+void MONITOR_Exit_Ctx(Atari800_Instance *inst)
 {
+	/* trainer_memory/trainer_flags are process-global debug scratch. */
+	(void) inst;
+
 	if (trainer_memory != NULL) {
 		free(trainer_memory);
 		trainer_memory=NULL;
@@ -959,9 +1203,11 @@ void MONITOR_Exit(void)
 	}
 }
 
-void MONITOR_ShowState(FILE *fp, UWORD pc, UBYTE a, UBYTE x, UBYTE y, UBYTE s,
+void MONITOR_ShowState_Ctx(Atari800_Instance *inst, FILE *fp, UWORD pc, UBYTE a, UBYTE x, UBYTE y, UBYTE s,
                 char n, char v, char z, char c)
 {
+	MONITOR_PIN_CTX(inst);
+
 	fprintf(fp, "%3d %3d A=%02X X=%02X Y=%02X S=%02X P=%c%c*-%c%c%c%c PC=",
 		ANTIC_ypos, ANTIC_XPOS, a, x, y, s,
 		n, v, (CPU_regP & CPU_D_FLAG) ? 'D' : '-', (CPU_regP & CPU_I_FLAG) ? 'I' : '-', z, c);
@@ -970,7 +1216,7 @@ void MONITOR_ShowState(FILE *fp, UWORD pc, UBYTE a, UBYTE x, UBYTE y, UBYTE s,
 
 static void show_state(void)
 {
-	MONITOR_ShowState(stdout, CPU_regPC, CPU_regA, CPU_regX, CPU_regY, CPU_regS,
+	MONITOR_ShowState_Ctx(MI, stdout, CPU_regPC, CPU_regA, CPU_regX, CPU_regY, CPU_regS,
 		(char) ((CPU_regP & CPU_N_FLAG) ? 'N' : '-'), (char) ((CPU_regP & CPU_V_FLAG) ? 'V' : '-'),
 		(char) ((CPU_regP & CPU_Z_FLAG) ? 'Z' : '-'), (char) ((CPU_regP & CPU_C_FLAG) ? 'C' : '-'));
 }
@@ -1121,26 +1367,18 @@ static UWORD assembler(UWORD addr)
 }
 #endif /* MONITOR_ASSEMBLER */
 
-#ifdef MONITOR_PROFILE
-MONITOR_coverage_rec MONITOR_coverage[0x10000];
-unsigned long MONITOR_coverage_insns;
-unsigned long MONITOR_coverage_cycles;
-#endif /* MONITOR_PROFILE */
+/* MONITOR_coverage/coverage_insns/coverage_cycles moved into
+   Monitor_state_t (instance.h); aliased to MO above. */
 
-#ifdef MONITOR_BREAK
-UWORD MONITOR_break_addr = 0xd000;
-UBYTE MONITOR_break_step = FALSE;
-static UBYTE break_over = FALSE;
-UBYTE MONITOR_break_ret = FALSE;
-UBYTE MONITOR_break_brk = FALSE;
-int MONITOR_ret_nesting = 0;
-#endif
+/* MONITOR_break_* / ret_nesting / break_over moved into Monitor_state_t
+   (instance.h); aliased to MO above. Default-instance init
+   (break_addr = 0xd000) is in atari.c. */
 
 #ifdef MONITOR_BREAKPOINTS
 
-MONITOR_breakpoint_cond MONITOR_breakpoint_table[MONITOR_BREAKPOINT_TABLE_MAX];
-int MONITOR_breakpoint_table_size = 0;
-int MONITOR_breakpoints_enabled = TRUE;
+/* MONITOR_breakpoint_table/_size/_enabled moved into Monitor_state_t
+   (instance.h); aliased to MO above. Default-instance init
+   (breakpoints_enabled = TRUE) is in atari.c. */
 
 static void breakpoint_print_flag(int flagmask)
 {
@@ -2949,9 +3187,9 @@ static void save_load_state(int save) {
 
 	if( (filename = get_token()) == NULL ) filename = "monitor.a8s";
 	if(save) {
-		result = StateSav_SaveAtariState(filename, "wb", TRUE);
+		result = StateSav_SaveAtariState_Ctx(MI, filename, "wb", TRUE);
 	} else {
-		result = StateSav_ReadAtariState(filename, "rb");
+		result = StateSav_ReadAtariState_Ctx(MI, filename, "rb");
 		PLATFORM_Exit(FALSE);
 	}
 
@@ -3753,28 +3991,37 @@ static void init_readline(void)
 /* called from atari.c, for -label-file CLI arg. */
 void MONITOR_PreloadLabelFile(char *filename)
 {
+	/* Called from CLI parsing before MONITOR_Run_Ctx: pin the default
+	   instance so the label lookup's Atari800_machine_type alias is valid.
+	   The label tables themselves stay process-global. */
+	MONITOR_PIN_CTX(Atari800_default);
 	load_user_labels(filename);
 }
 #endif
 
 #ifdef MONITOR_BREAK
 /* called from atari.c, for -bbrk CLI arg. */
-void MONITOR_BBRK_on(void)
+void MONITOR_BBRK_on_Ctx(Atari800_Instance *inst)
 {
+	MONITOR_PIN_CTX(inst);
 	MONITOR_break_brk = TRUE;
 }
 
 /* called from atari.c, for -bpc CLI arg. */
-void MONITOR_BPC(char *arg)
+void MONITOR_BPC_Ctx(Atari800_Instance *inst, char *arg)
 {
 	UWORD addr = 0xd000;
+
+	MONITOR_PIN_CTX(inst);
 	parse_hex(arg, &addr); /* XXX error message on bad arg? */
 	MONITOR_break_addr = addr;
 }
 #endif
 
-int MONITOR_Run(void)
+int MONITOR_Run_Ctx(Atari800_Instance *inst)
 {
+	MONITOR_PIN_CTX(inst);
+
 	UWORD addr;
 
 #ifdef __PLUS
@@ -3788,7 +4035,7 @@ int MONITOR_Run(void)
 
 	addr = CPU_regPC;
 
-	CPU_GetStatus(Atari800_default);
+	CPU_GetStatus(MI);
 
 	if (CPU_cim_encountered) {
 		printf("(CIM encountered)\n");
@@ -3941,12 +4188,12 @@ int MONITOR_Run(void)
 		else if (strcmp(t, "CART") == 0)
 			show_CARTRIDGE();
 		else if (strcmp(t, "COLDSTART") == 0) {
-			Atari800_Coldstart();
+			Atari800_Coldstart_Ctx(MI);
 			PLUS_EXIT_MONITOR;
 			return TRUE;	/* perform reboot immediately */
 		}
 		else if (strcmp(t, "WARMSTART") == 0) {
-			Atari800_Warmstart();
+			Atari800_Warmstart_Ctx(MI);
 			PLUS_EXIT_MONITOR;
 			return TRUE;	/* perform reboot immediately */
 		}

@@ -31,6 +31,7 @@
 /* Atari800 includes */
 #include "libatari800.h"
 #include "atari.h"
+#include "instance.h" /* Atari800_Instance, Atari800_default */
 #include "../sio.h"
 #include "../esc.h"
 #include "akey.h"
@@ -53,6 +54,13 @@
 #include "libatari800/sound.h"
 #include "libatari800/statesav.h"
 
+/* libatari800/sound.h aliases the legacy sound-state names to the default
+   instance for the sound callbacks; in this file the names are always
+   accessed as instance fields, so drop the aliases. */
+#undef sound_array_fill
+#undef sound_hw_buffer_size
+#undef sample_residual
+
 
 #ifdef HAVE_SETJMP
 jmp_buf libatari800_cpu_crash;
@@ -65,17 +73,32 @@ int libatari800_continue_on_brk = 0;
 int libatari800_error_code;
 
 
+/* Create a new emulator instance (multi-instance API). The returned
+   instance has sensible defaults; use libatari800_init() for the
+   process-level default instance or configure the new instance by mounting
+   images and calling libatari800_reboot_with_file_Ctx(). */
+libatari800_instance_t *libatari800_new_instance(void)
+{
+	return Atari800_NewInstance();
+}
+
+void libatari800_free_instance(libatari800_instance_t *inst)
+{
+	Atari800_FreeInstance(inst);
+}
+
+
 /** Initialize emulator configuration
- * 
+ *
  * Sets emulator configuration using the supplied argument list. The arguments
  * correspond to command line arguments for the `atari800` program, see its manual
  * page for more information on arguments and their functions.
- * 
+ *
  * @param argc number of arguments in @a argv, or -1 if \a argv contains a NULL
  * terminated list.
- * 
+ *
  * @param argv list of arguments.
- * 
+ *
  * @retval FALSE if error in argument list
  * @retval TRUE if successful
  */
@@ -116,10 +139,10 @@ int libatari800_init(int argc, char **argv) {
 		argv_ptr = argv;
 	}
 
-	CPU_cim_encountered = 0;
+	Atari800_default->cpu.cim_encountered = 0;
 	libatari800_error_code = 0;
-	Atari800_nframes = 0;
-	MEMORY_selftest_enabled = 0;
+	Atari800_default->nframes = 0;
+	Atari800_default->memory.selftest_enabled = 0;
 	status = Atari800_Initialise(&argc, argv_ptr);
 	if (status) {
 		Log_flushlog();
@@ -144,10 +167,10 @@ char *unknown_error = "unknown error";
 
 
 /** Get text description of latest error message
- * 
+ *
  * If the \a libatari800_next_frame return value indicates an error condition,
  * this function will return an error message suitable for display to the user.
- * 
+ *
  * @returns text description of error
  */
 const char *libatari800_error_message() {
@@ -159,12 +182,12 @@ const char *libatari800_error_message() {
 
 
 /** Set whether encountering a BRK instruction exits emulation.
- * 
+ *
  * Choose what happens when a BRK instruction is encountered. Most often this will lead
  * to the program inside the emulator failing and forcing the emulator into a lockup
  * condition. But some programs trap the BRK instruction to implement extra functionality
  * like a debugger.
- * 
+ *
  * @param cont if True, the emulation will continue without notification when a BRK is
  * encountered. If False, emulation immediately exits with the error code
  * LIBATARI800_BRK_INSTRUCTION
@@ -175,31 +198,33 @@ void libatari800_continue_emulation_on_brk(int cont) {
 
 
 /** Clears input array structure
- * 
+ *
  * Clears any user input (keystrokes, joysticks, paddles) in the input array
  * structure to indicate that no user input is taking place.
- * 
+ *
  * This should be called to initialize the input array before the first call
  * to \a libatari800_next_frame.
- * 
+ *
+ * @param inst instance whose input is cleared
  * @param input pointer to input array structure
  */
-void libatari800_clear_input_array(input_template_t *input)
+void libatari800_clear_input_array_Ctx(Atari800_Instance *inst, input_template_t *input)
 {
 	/* Initialize input and output arrays to zero */
 	memset(input, 0, sizeof(input_template_t));
-	INPUT_key_code = AKEY_NONE;
+	inst->input.key_code = AKEY_NONE;
 }
 
 
 /** Perform one video frame's worth of emulation
- * 
+ *
  * This is the main driver for libatari800. This function runs the emulator for enough
  * CPU cycles to produce one video frame's worth of emulation. Results of the frame
  * can be retrieved using the \a libatari800_get_* functions.
- * 
+ *
+ * @param inst instance to advance
  * @param input input template structure defining the user input for the frame
- * 
+ *
  * @retval 0 successfully emulated frame
  * @retval 1 unidentified cartridge type
  * @retval 2 CPU crash
@@ -209,25 +234,29 @@ void libatari800_clear_input_array(input_template_t *input)
  * @retval 6 entered Memo Pad
  * @retval 7 encountered invalid escape opcode
  */
-int libatari800_next_frame(input_template_t *input)
+int libatari800_next_frame_Ctx(Atari800_Instance *inst, input_template_t *input)
 {
-	LIBATARI800_Input_array = input;
-	INPUT_key_code = PLATFORM_Keyboard();
-	LIBATARI800_Mouse();
+	/* The instance is pinned so the PLATFORM_* callbacks invoked from
+	   inside the frame (keyboard, joystick, triggers, sound) operate on
+	   it. */
+	LIBATARI800_SetCurrentInstance(inst);
+	inst->libatari800.input_array = input;
+	inst->input.key_code = PLATFORM_Keyboard();
+	LIBATARI800_Mouse_Ctx(inst);
 #ifdef HAVE_SETJMP
 	if ((libatari800_error_code = setjmp(libatari800_cpu_crash))) {
 		/* called from within CPU_GO to indicate crash */
-		Log_print("libatari800_next_frame: notified of CPU crash: %d\n", CPU_cim_encountered);
+		Log_print("libatari800_next_frame: notified of CPU crash: %d\n", inst->cpu.cim_encountered);
 	}
 	else
 #endif /* HAVE_SETJMP */
 	{
 		/* normal operation */
-		LIBATARI800_Frame();
-		if (CPU_cim_encountered) {
+		LIBATARI800_Frame_Ctx(inst);
+		if (inst->cpu.cim_encountered) {
 			libatari800_error_code = LIBATARI800_CPU_CRASH;
 		}
-		else if (ANTIC_dlist == 0) {
+		else if (inst->antic.dlist == 0) {
 			libatari800_error_code = LIBATARI800_DLIST_ERROR;
 		}
 	}
@@ -237,44 +266,48 @@ int libatari800_next_frame(input_template_t *input)
 
 
 /** Use disk image in a disk drive
- * 
+ *
  * Insert a virtual floppy image into one of the emulated disk drives. Currently
  * supported formats include ATR, ATX, DCM, PRO, XFD.
- * 
+ *
+ * @param inst instance whose drive is used
  * @param diskno disk drive number (1 - 8)
  * @param filename path to disk image
  * @param readonly if \a TRUE will be mounted as read-only
- * 
+ *
  * @retval FALSE if error
  * @retval TRUE if successful
  */
-int libatari800_mount_disk_image(int diskno, const char *filename, int readonly)
+int libatari800_mount_disk_image_Ctx(Atari800_Instance *inst, int diskno, const char *filename, int readonly)
 {
-	return SIO_Mount(diskno, filename, readonly);
+	return SIO_Mount_Ctx(inst, diskno, filename, readonly);
 }
 
 
 /** Restart emulation using file
- * 
+ *
  * Perform a cold start with a disk image, executable file, cartridge, cassette image,
  * BASIC file, or atari800 state save file.
- * 
+ *
  * This is currently the only way to load and have the emulator run an executable
  * file or BASIC program without a boot disk image. The atari800 emulator
  * includes a built-in bootloader for these files but is only available at machine
  * start.
- * 
+ *
+ * @param inst instance to restart (AFILE processing is still process-level)
  * @param path to file
- * 
+ *
  * @returns file type, or 0 for error
  */
-int libatari800_reboot_with_file(const char *filename)
+int libatari800_reboot_with_file_Ctx(Atari800_Instance *inst, const char *filename)
 {
 	int file_type;
 
+	/* AFILE_OpenFile is not yet instance-aware (transitional: it mounts
+	   onto the default instance). */
 	file_type = AFILE_OpenFile(filename, FALSE, 1, FALSE);
 	if (file_type != AFILE_ERROR) {
-		Atari800_Coldstart();
+		Atari800_Coldstart_Ctx(inst);
 	}
 	return file_type;
 }
@@ -289,11 +322,12 @@ int libatari800_reboot_with_file(const char *filename)
  * Accessing memory through this pointer will not return hardware register
  * information, this provides access to the RAM only.
  *
+ * @param inst instance
  * @returns pointer to the beginning of the 64k block of main memory
  */
-UBYTE *libatari800_get_main_memory_ptr()
+UBYTE *libatari800_get_main_memory_ptr_Ctx(Atari800_Instance *inst)
 {
-	return MEMORY_mem;
+	return inst->memory.mem;
 }
 
 
@@ -308,16 +342,17 @@ UBYTE *libatari800_get_main_memory_ptr()
  * displayed. Typical margins will be 24 on each the right and left, and 16 each
  * on the top and bottom, leaving an 8 pixel margin on all sides for the normal
  * 320x192 addressable pixels.
- * 
+ *
  * Note that the screen is output only, and changes to this array will have no
  * effect on the emulation.
  *
+ * @param inst instance
  * @returns pointer to the beginning of the 92160 bytes of data holding the
  * emulated screen.
  */
-UBYTE *libatari800_get_screen_ptr()
+UBYTE *libatari800_get_screen_ptr_Ctx(Atari800_Instance *inst)
 {
-	return (UBYTE *)Screen_atari;
+	return (UBYTE *)inst->screen.atari;
 }
 
 
@@ -335,58 +370,67 @@ UBYTE *libatari800_get_screen_ptr()
  * Use the function \a libatari800_get_sound_buffer_len to determine usable size
  * of the sound buffer.
  *
+ * @param inst instance
  * @returns pointer to the beginning of the sound sample buffer
  */
-UBYTE *libatari800_get_sound_buffer()
+UBYTE *libatari800_get_sound_buffer_Ctx(Atari800_Instance *inst)
 {
-	return (UBYTE *)LIBATARI800_Sound_array;
+	return (UBYTE *)inst->libatari800.sound_array;
 }
 
 
 /** Return the usable size of the sound buffer.
  *
+ * @param inst instance
  * @returns number of bytes of valid data in the sound buffer
  */
-int libatari800_get_sound_buffer_len() {
-	return (int)sound_array_fill;
+int libatari800_get_sound_buffer_len_Ctx(Atari800_Instance *inst) {
+	return (int)inst->libatari800.sound_array_fill;
 }
 
 
 /** Return the maximum size of the sound buffer.
  *
+ * @param inst instance
  * @returns number of bytes allocated in sound buffer
  */
 
-int libatari800_get_sound_buffer_allocated_size() {
-	return (int)sound_hw_buffer_size;
+int libatari800_get_sound_buffer_allocated_size_Ctx(Atari800_Instance *inst) {
+	return (int)inst->libatari800.sound_hw_buffer_size;
 }
 
 
 /** Return the audio sample rate in samples per second
  *
+ * @param inst instance
  * @returns the audio sample rate, typically 44100 or 48000
  */
-int libatari800_get_sound_frequency() {
-	return (int)Sound_out.freq;
+int libatari800_get_sound_frequency_Ctx(Atari800_Instance *inst) {
+	(void) inst;
+	return (int)Sound_out.freq; /* Sound module not yet instance-aware (Phase 4.3) */
 }
 
 
 /** Return the number of audio channels
  *
+ * @param inst instance
  * @retval 1 mono
  * @retval 2 stereo
  */
-int libatari800_get_num_sound_channels() {
+int libatari800_get_num_sound_channels_Ctx(Atari800_Instance *inst) {
+	(void) inst;
 	return (int)Sound_out.channels;
 }
 
 
 /** Return the sample size in bytes of each audio sample
  *
+ * @param inst instance
  * @retval 1 8-bit audio
  * @retval 2 16-bit audio
  */
-int libatari800_get_sound_sample_size() {
+int libatari800_get_sound_sample_size_Ctx(Atari800_Instance *inst) {
+	(void) inst;
 	return Sound_out.sample_size;
 }
 
@@ -396,13 +440,14 @@ int libatari800_get_sound_sample_size() {
  * It is important to note that libatari800 can run as fast as the host computer will
  * allow, but simulates operation as if it were running at NTSC or PAL frame rates. It
  * is up to the calling program to display frames at the correct rate.
- * 
+ *
  * The NTSC frame rate is 59.9227434 frames per second, and PAL is 49.8607597 fps.
- * 
+ *
+ * @param inst instance
  * @returns floating point number representing the frame rate.
  */
-float libatari800_get_fps() {
-	return Atari800_tv_mode == Atari800_TV_PAL ? Atari800_FPS_PAL : Atari800_FPS_NTSC;
+float libatari800_get_fps_Ctx(Atari800_Instance *inst) {
+	return inst->tv_mode == Atari800_TV_PAL ? Atari800_FPS_PAL : Atari800_FPS_NTSC;
 }
 
 
@@ -418,11 +463,12 @@ float libatari800_get_fps() {
  * state. In this case, the number of frames will be restored to the value from
  * the saved state.
  *
+ * @param inst instance
  * @returns number of frames that have been generated, or zero if no \a
  * libatari800_next_frame has not been called yet.
  */
-int libatari800_get_frame_number() {
-	return Atari800_nframes;
+int libatari800_get_frame_number_Ctx(Atari800_Instance *inst) {
+	return inst->nframes;
 }
 
 
@@ -436,29 +482,30 @@ int libatari800_get_frame_number() {
  * tags as an offset to locate the subsystem of interest, and casting the
  * resulting offset into its own struct. E.g. to find the value of the CPU
  * registers and the current program counter, this code:
- * 
+ *
  * \code{c}
  * emulator_state_t state;
  * cpu_state_t *cpu;
  * pc_state_t *pc;
- * 
+ *
  * libatari800_get_current_state(&state);
  * cpu = (cpu_state_t *)&state.state[state.tags.cpu];
  * pc = (pc_state_t *)&state.state[state.tags.pc];
  * printf("CPU A=%02x X=%02x Y=%02x PC=%04x\\n", cpu->A, cpu->X, cpu->Y, pc->PC);
  * \endcode
- * 
+ *
  * gets the current state of the emulator, locates the \a cpu_state_t structure
  * and the \a pc_state_t structure within it, and prints the values of interest.
  *
+ * @param inst instance
  * @param state pointer to an already allocated \a emulator_state_t structure
  */
-void libatari800_get_current_state(emulator_state_t *state)
+void libatari800_get_current_state_Ctx(Atari800_Instance *inst, emulator_state_t *state)
 {
-	LIBATARI800_StateSave(state->state, &state->tags);
-	state->flags.selftest_enabled = MEMORY_selftest_enabled;
-	state->flags.nframes = (ULONG)Atari800_nframes;
-	state->flags.sample_residual = (ULONG)(0xffffffff * sample_residual);
+	LIBATARI800_StateSave_Ctx(inst, state->state, &state->tags);
+	state->flags.selftest_enabled = inst->memory.selftest_enabled;
+	state->flags.nframes = (ULONG)inst->nframes;
+	state->flags.sample_residual = (ULONG)(0xffffffff * inst->libatari800.sample_residual);
 }
 
 
@@ -466,19 +513,20 @@ void libatari800_get_current_state(emulator_state_t *state)
  *
  * Return the emulator to a previous state as defined by a previous call to
  * \a libatari800_get_current_state.
- * 
+ *
  * Minimal error checking is performed on the data in \a state, so if the
  * data in \a state has been altered it is possible that the emulator will
  * be returned to an invalid state and further emulation will fail.
  *
+ * @param inst instance
  * @param state pointer to an already allocated \a emulator_state_t structure
  */
-void libatari800_restore_state(emulator_state_t *state)
+void libatari800_restore_state_Ctx(Atari800_Instance *inst, emulator_state_t *state)
 {
-	LIBATARI800_StateLoad(state->state);
-	MEMORY_selftest_enabled = state->flags.selftest_enabled;
-	Atari800_nframes = state->flags.nframes;
-	sample_residual = (double)state->flags.sample_residual / (double)0xffffffff;
+	LIBATARI800_StateLoad_Ctx(inst, state->state);
+	inst->memory.selftest_enabled = state->flags.selftest_enabled;
+	inst->nframes = state->flags.nframes;
+	inst->libatari800.sample_residual = (double)state->flags.sample_residual / (double)0xffffffff;
 }
 
 
@@ -497,32 +545,32 @@ void libatari800_exit() {
 void (*disk_activity_callback)(int drive, int operation) = NULL;
 
 /* Disk management functions */
-int libatari800_mount_disk(int drive_num, const char *filename, int read_only)
+int libatari800_mount_disk_Ctx(Atari800_Instance *inst, int drive_num, const char *filename, int read_only)
 {
 	if (drive_num < 1 || drive_num > 8 || filename == NULL)
 		return FALSE;
 
 	/* Use SIO_Mount with read_only flag properly mapped */
-	if (SIO_Mount(drive_num, filename, read_only ? TRUE : FALSE))
+	if (SIO_Mount_Ctx(inst, drive_num, filename, read_only ? TRUE : FALSE))
 		return TRUE;
 
 	return FALSE;
 }
 
-void libatari800_unmount_disk(int drive_num)
+void libatari800_unmount_disk_Ctx(Atari800_Instance *inst, int drive_num)
 {
 	if (drive_num < 1 || drive_num > 8)
 		return;
 
-	SIO_Dismount(drive_num);
+	SIO_Dismount_Ctx(inst, drive_num);
 }
 
-void libatari800_disable_drive(int drive_num)
+void libatari800_disable_drive_Ctx(Atari800_Instance *inst, int drive_num)
 {
 	if (drive_num < 1 || drive_num > 8)
 		return;
 
-	SIO_DisableDrive(drive_num);
+	SIO_DisableDrive_Ctx(inst, drive_num);
 }
 
 void libatari800_set_disk_activity_callback(void (*callback)(int drive, int operation))
@@ -530,15 +578,15 @@ void libatari800_set_disk_activity_callback(void (*callback)(int drive, int oper
 	disk_activity_callback = callback;
 }
 
-int libatari800_get_sio_patch_enabled(void)
+int libatari800_get_sio_patch_enabled_Ctx(Atari800_Instance *inst)
 {
-	return ESC_enable_sio_patch;
+	return inst->esc.enable_sio_patch;
 }
 
-int libatari800_set_sio_patch_enabled(int enabled)
+int libatari800_set_sio_patch_enabled_Ctx(Atari800_Instance *inst, int enabled)
 {
-	int prev = ESC_enable_sio_patch;
-	ESC_enable_sio_patch = enabled;
+	int prev = inst->esc.enable_sio_patch;
+	inst->esc.enable_sio_patch = enabled;
 	return prev;
 }
 

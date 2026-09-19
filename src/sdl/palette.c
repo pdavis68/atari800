@@ -29,26 +29,47 @@
 #include "bit3.h"
 #include "config.h"
 #include "colours.h"
+#include "instance.h"
 #include "videomode.h"
 
-SDL_PALETTE_tab_t const SDL_PALETTE_tab[VIDEOMODE_MODE_SIZE] = {
-	{ Colours_table, 256 } /* Standard display */
+/* The palette pointers are resolved at runtime instead of at static-init
+   time: the palettes are per-instance state (Colours_state_t.table,
+   AF80_state_t.palette, BIT3_state_t.palette), and a static initialiser
+   cannot dereference Atari800_default. The pointer targets never change,
+   so later updates to the palette contents are picked up automatically. */
+SDL_PALETTE_tab_t SDL_PALETTE_tab[VIDEOMODE_MODE_SIZE];
+
+void SDL_PALETTE_Initialise(void)
+{
+	SDL_PALETTE_tab_t *tab = SDL_PALETTE_tab;
+	tab->palette = Atari800_default->colours.table;
+	tab->size = 256; /* Standard display */
 #if NTSC_FILTER
-	,{ Colours_table, 256 } /* NTSC filter */
+	++tab;
+	tab->palette = Atari800_default->colours.table;
+	tab->size = 256; /* NTSC filter */
 #endif
 #ifdef XEP80_EMULATION
-	,{ Colours_table, 256 } /* XEP80 also uses the standard palette */
+	++tab;
+	tab->palette = Atari800_default->colours.table;
+	tab->size = 256; /* XEP80 also uses the standard palette */
 #endif
 #ifdef PBI_PROTO80
-	,{ Colours_table, 256 } /* So does PBI Proto80 */
+	++tab;
+	tab->palette = Atari800_default->colours.table;
+	tab->size = 256; /* So does PBI Proto80 */
 #endif
 #ifdef AF80
-	,{ AF80_palette, 16 } /* AF80 */
+	++tab;
+	tab->palette = Atari800_default->af80.palette;
+	tab->size = 16; /* AF80 */
 #endif
 #ifdef BIT3
-	,{ BIT3_palette, 2 } /* BIT3 */
+	++tab;
+	tab->palette = Atari800_default->bit3.palette;
+	tab->size = 2; /* BIT3 */
 #endif
-};
+}
 
 SDL_PALETTE_buffer_t SDL_PALETTE_buffer;
 

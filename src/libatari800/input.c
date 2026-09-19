@@ -37,15 +37,37 @@
 
 static int lastkey = -1, key_control = 0;
 
-input_template_t *LIBATARI800_Input_array = NULL;
+/* The instance whose PLATFORM_* callbacks operate on the emulator state.
+   Pinned by libatari800_next_frame_Ctx / LIBATARI800_Frame_Ctx; NULL means
+   the default instance. */
+static Atari800_Instance *LIBATARI800_current_inst = NULL;
+
+void LIBATARI800_SetCurrentInstance(Atari800_Instance *inst)
+{
+	LIBATARI800_current_inst = inst;
+}
+
+Atari800_Instance *LIBATARI800_CurrentInstance(void)
+{
+	return LIBATARI800_current_inst != NULL
+	       ? LIBATARI800_current_inst : Atari800_default;
+}
 
 
 int PLATFORM_Keyboard(void)
 {
 	int shiftctrl = 0;
 	int keycode = 0;
+	Atari800_Instance *inst = LIBATARI800_CurrentInstance();
+	input_template_t *input = inst->libatari800.input_array;
 
-	input_template_t *input = LIBATARI800_Input_array;
+	/* Re-point the emulator-state aliases written here to this instance. */
+#undef INPUT_key_shift
+#undef INPUT_key_consol
+#undef BINLOAD_pause_loading
+#define INPUT_key_shift  (inst->input.key_shift)
+#define INPUT_key_consol (inst->input.key_consol)
+#define BINLOAD_pause_loading (inst->binload.pause_loading)
 
 	lastkey = input->keychar;
 	if (lastkey == 0) {
@@ -81,6 +103,12 @@ int PLATFORM_Keyboard(void)
 		INPUT_key_consol &= ~INPUT_CONSOL_START;
 
 	if (!lastkey) {
+#undef INPUT_key_shift
+#undef INPUT_key_consol
+#undef BINLOAD_pause_loading
+#define INPUT_key_shift  (Atari800_default->input.key_shift)
+#define INPUT_key_consol (Atari800_default->input.key_consol)
+#define BINLOAD_pause_loading (Atari800_default->binload.pause_loading)
 		return AKEY_NONE;
 	}
 
@@ -389,11 +417,23 @@ int PLATFORM_Keyboard(void)
 	return AKEY_NONE;
 }
 
-void LIBATARI800_Mouse(void)
+void LIBATARI800_Mouse_Ctx(Atari800_Instance *inst)
 {
 	int mouse_mode;
 
-	input_template_t *input = LIBATARI800_Input_array;
+	input_template_t *input = inst->libatari800.input_array;
+
+	/* Re-point the emulator-state aliases written here to this instance. */
+#undef INPUT_mouse_delta_x
+#undef INPUT_mouse_delta_y
+#undef INPUT_mouse_buttons
+#undef POKEY_POT_input
+#undef INPUT_mouse_port
+#define INPUT_mouse_delta_x (inst->input.mouse_delta_x)
+#define INPUT_mouse_delta_y (inst->input.mouse_delta_y)
+#define INPUT_mouse_buttons (inst->input.mouse_buttons)
+#define POKEY_POT_input     (inst->pokey.POT_input)
+#define INPUT_mouse_port    (inst->input.mouse_port)
 
 	mouse_mode = input->mouse_mode;
 
@@ -415,6 +455,17 @@ void LIBATARI800_Mouse(void)
 	}
 
 	INPUT_mouse_buttons = input->mouse_buttons;
+
+#undef INPUT_mouse_delta_x
+#undef INPUT_mouse_delta_y
+#undef INPUT_mouse_buttons
+#undef POKEY_POT_input
+#undef INPUT_mouse_port
+#define INPUT_mouse_delta_x (Atari800_default->input.mouse_delta_x)
+#define INPUT_mouse_delta_y (Atari800_default->input.mouse_delta_y)
+#define INPUT_mouse_buttons (Atari800_default->input.mouse_buttons)
+#define POKEY_POT_input     (Atari800_default->pokey.POT_input)
+#define INPUT_mouse_port    (Atari800_default->input.mouse_port)
 }
 
 int LIBATARI800_Input_Initialise(int *argc, char *argv[])
@@ -424,7 +475,7 @@ int LIBATARI800_Input_Initialise(int *argc, char *argv[])
 
 int PLATFORM_PORT(int num)
 {
-	input_template_t *input = LIBATARI800_Input_array;
+	input_template_t *input = LIBATARI800_CurrentInstance()->libatari800.input_array;
 
 	if (num == 0) {
 		return (input->joy0 + (input->joy1 << 4)) ^ 0xff;
@@ -437,7 +488,7 @@ int PLATFORM_PORT(int num)
 
 int PLATFORM_TRIG(int num)
 {
-	input_template_t *input = LIBATARI800_Input_array;
+	input_template_t *input = LIBATARI800_CurrentInstance()->libatari800.input_array;
 
 	switch (num) {
 	case 0:

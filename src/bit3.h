@@ -5,15 +5,14 @@
 #include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 #include <stdio.h>
 
-extern int BIT3_palette[2];
-
 /* Transitional Option C bridge: the per-instance BIT3 state lives in
    BIT3_state_t (instance.h). Until all callers pass an instance
    explicitly, the legacy global names are aliased to the default
-   instance. BIT3_palette is intentionally kept as a real file-scope
-   global in bit3.c (referenced from a static initialiser in
-   sdl/palette.c). VIDEOMODE_80_column / VIDEOMODE_Set80Column remain
-   process-global (videomode is a Phase 4 module, transitional). */
+   instance. BIT3_palette lives in BIT3_state_t.palette; sdl/palette.c
+   resolves the pointer at runtime (SDL_PALETTE_Initialise).
+   VIDEOMODE_80_column / VIDEOMODE_Set80Column remain process-global
+   (videomode is a Phase 4 module, transitional). */
+#define BIT3_palette (Atari800_default->bit3.palette)
 
 /* Context-aware entry points (Option C). The legacy names below are
    forwarding macros that pass the default instance, so not-yet-migrated

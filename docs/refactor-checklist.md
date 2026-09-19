@@ -42,7 +42,8 @@ refactor. It is the working companion to
       `PBI_state_t` (+ SCSI/BB/MIO/ESC/Binload/RTIME/Voicebox/Pokeyrec/IDE/
       AF80/BIT3/PROTO80/XLD/XEP80/RDevice/Input), `Screen_state_t`
       (2026-09-16), and `Colours_state_t` (2026-09-16), `Artifact_state_t`
-      (2026-09-16). Still forward-declared: `Sound_state_t` (Phase 4.3).
+      (2026-09-16), `Libatari800_state_t` (2026-09-18, Phase 5). Still
+      forward-declared: `Sound_state_t` (Phase 4.3).
 - [x] Define the lifecycle API prototypes (`Atari800_NewInstance`, etc.).
 - [x] Add the transitional `Atari800_default` instance pointer.
 
@@ -705,11 +706,11 @@ refactor. It is the working companion to
       will be re-routed per-instance when those dispatchers pass their own
       instance. `_Ctx` bodies touch `AFI->memory.mem` directly and call
       `MEMORY_Cart809fEnableCtx/DisableCtx(inst)` (own instance), so the
-      module is per-instance end-to-end. Exception: `AF80_palette[16]`
-      stays a real file-scope global (it is derived from the shared
-      read-only `rgbi_palette` table and referenced from a static
-      initialiser in `sdl/palette.c`, which cannot dereference
-      `Atari800_default`); treated as shared/transitional. The
+      module is per-instance end-to-end. **Update (Phase 6, 2026-09-19):**
+      `AF80_palette[16]` moved into `AF80_state_t.palette` (derived from
+      the shared read-only `rgbi_palette` table by `AF80_Initialise_Ctx`);
+      the former static-initialiser blocker in `sdl/palette.c` was replaced
+      with the runtime `SDL_PALETTE_Initialise()` (see §6.1). The
       AF80_DEBUG `D()` prints still read `CPU_remember_PC` via the
       default-instance aliases in `cpu.h` (debug-only, transitional).
       Build passes; 20 s no-disk smoke run clean (no CIM); Acid800
@@ -727,8 +728,9 @@ refactor. It is the working companion to
       to `Atari800_default->af80.enabled`. Defaults (all FALSE/0, NULL
       buffers) match the old static initialisers via zero-init; the
       ROM/charset/screen/attrib buffers stay heap pointers filled by
-      `AF80_Initialise_Ctx`. The shared `rgbi_palette` table and
-      `AF80_palette` stay file-scope in `af80.c`.
+      `AF80_Initialise_Ctx`. The shared `rgbi_palette` table stays
+      file-scope in `af80.c`; `AF80_palette` moved into
+      `AF80_state_t.palette` in Phase 6 (see §6.1).
 - [x] **BIT3** — [`src/bit3.h`](src/bit3.h): `BIT3_Initialise`, `BIT3_Exit`,
       `BIT3_InsertRightCartridge`, `BIT3_D5GetByte`, `BIT3_D5PutByte`,
       `BIT3_D6GetByte`, `BIT3_D6PutByte`, `BIT3_GetPixels`, `BIT3_Reset` (also
@@ -743,9 +745,12 @@ refactor. It is the working companion to
       the forwarding macros — transitional: default instance; they will
       be re-routed per-instance when those dispatchers pass their own
       instance. `_Ctx` bodies touch `B3i->memory.mem` directly (own
-      instance). Exceptions: `BIT3_palette[2]` stays a real file-scope
-      global (referenced from a static initialiser in `sdl/palette.c`,
-      which cannot dereference `Atari800_default`); `BIT3_Reset_Ctx`'s
+      instance). **Update (Phase 6, 2026-09-19):** `BIT3_palette[2]` moved
+      into `BIT3_state_t.palette` (its static-initialiser values are
+      preserved in the default-instance initializer in `atari.c`; the
+      former `sdl/palette.c` static-initialiser blocker was replaced with
+      the runtime `SDL_PALETTE_Initialise()`, see §6.1). Remaining
+      exception: `BIT3_Reset_Ctx`'s
       `VIDEOMODE_Set80Column` call and `BIT3_Initialise_Ctx`'s
       `VIDEOMODE_80_column` store remain process-global (videomode is a
       Phase 4 module, transitional). Note: `BIT3_InsertRightCartridge`
@@ -763,8 +768,10 @@ refactor. It is the working companion to
       to `Atari800_default->bit3.enabled`. Defaults (all FALSE/0, NULL
       buffers) match the old static initialisers via zero-init; the
       ROM/charset/screen buffers stay heap pointers filled by
-      `BIT3_Initialise_Ctx`. The shared `BIT3_palette` stays file-scope
-      in `bit3.c`.
+      `BIT3_Initialise_Ctx`. `BIT3_palette` moved into
+      `BIT3_state_t.palette` in Phase 6 (see §6.1); the shared
+      `rgbi_palette`-equivalent constants are now in the default-instance
+      initializer in `atari.c`.
 - [x] **IDE** — [`src/ide.h`](src/ide.h): `IDE_Initialise`, `IDE_Exit`,
       `IDE_GetByte`, `IDE_PutByte`; state `IDE_enabled` and IDE disk state.
       Done 2026-09-15: each is now `IDE_*_Ctx(Atari800_Instance *inst, ...)`
@@ -985,7 +992,8 @@ refactor. It is the working companion to
 > **Status: in progress.** Screen (§4.1) done (2026-09-16); Colours
 > (§4.2, including the COLOURS_NTSC/COLOURS_PAL sub-modules), Artifact,
 > Pal_blending, and Filter_ntsc (§4.2) done (2026-09-16); the top-level
-> driver (§4.4) done (2026-09-18).
+> driver (§4.4) done (2026-09-18); State save/load (§4.5) and the
+> Monitor/debugger (§4.6) done (2026-09-18).
 > File_export (§4.2) and Videomode (§4.2) are **deferred** (host-output
 > state; see their entries for rationale).
 > All public Screen/Colours functions now expose
@@ -1093,13 +1101,13 @@ refactor. It is the working companion to
       old static initialisers via zero-init (`filename = ""`,
       `loaded/adjust = FALSE`); the non-zero defaults (NTSC
       `color_delay = 26.8`, PAL `color_delay = 23.2`) are applied by
-      `Colours_PreInitialise_Ctx` at startup, as before. **Exception:**
-      `Colours_table[256]` stays a real file-scope global in `colours.c`
-      *(shared/transitional)* — `sdl/palette.c` references it from a static
-      initialiser (`{ Colours_table, 256 }`), which cannot dereference
-      `Atari800_default`; same consideration as `AF80_palette`/
-      `BIT3_palette`. It must become per-instance together with the
-      platform palette modules (Phase 6).
+      `Colours_PreInitialise_Ctx` at startup, as before.
+      **Update (Phase 6, 2026-09-19):** `Colours_table[256]` now also lives
+      in `Colours_state_t` (`Colours_state_t.table`); `colours.c` aliases
+      it to the pinned context and `colours.h` to
+      `Atari800_default->colours.table`. The former blocker —
+      `sdl/palette.c`'s static initialiser — was replaced with the runtime
+      `SDL_PALETTE_Initialise()` (see §6.1).
 - [ ] **Videomode** — [`src/videomode.h`](src/videomode.h): `VIDEOMODE_*` functions
       and state. **Deferred (host-display state):** `videomode.c` (1271 lines,
       ~300 external call sites) is the host display's geometry/resolution
@@ -1108,8 +1116,9 @@ refactor. It is the working companion to
       `PLATFORM_SetVideoMode`. These are single-host-device concerns, not
       per-machine state; converting it before the platform ports (Phase 6)
       would produce a misleading per-instance split. Revisit together with the
-      SDL/platform layer, where `Screen_atari`/`Colours_table` static-init
-      references must also be resolved.
+      SDL/platform layer, where the `Screen_atari` static-init references
+      must also be resolved (the `Colours_table` static-init blocker was
+      resolved in Phase 6, see §6.1).
 - [x] **Pal_blending** — [`src/pal_blending.h`](src/pal_blending.h):
       `PAL_BLENDING_UpdateLookup`, `PAL_BLENDING_Blit16/32`,
       `PAL_BLENDING_BlitScaled16/32`.
@@ -1230,6 +1239,12 @@ refactor. It is the working companion to
 - [ ] **Mzpokeysnd** — [`src/mzpokeysnd.h`](src/mzpokeysnd.h): `MZPOKEYSND_*`
       functions and state.
 
+> **Phase 6 audit note (2026-09-19):** `src/android/jni/sound.c` defines its
+> own `Sound_out`/`Sound_enabled`/`Sound_latency` (the Android port ships its
+> own `sound.c` in place of the core one), so converting the Sound module
+> must account for that port-local duplicate (or the port must be re-pointed
+> at the core module). Recorded during the Phase 6 port audit.
+
 ### 4.4 Top-level driver — [`src/atari.h`](src/atari.h), [`src/atari.c`](src/atari.c)
 
 > **Status: done (2026-09-18).** All per-instance driver state now lives in
@@ -1296,71 +1311,462 @@ refactor. It is the working companion to
 
 ### 4.5 State save/load — [`src/statesav.h`](src/statesav.h), [`src/statesav.c`](src/statesav.c)
 
-- [ ] Convert: `StateSav_SaveAtariState`, `StateSav_ReadAtariState`,
+> **Status: done (2026-09-18).** The save/read stream is per-instance
+> (`Statesav_state_t`, embedded by value in `Atari800_Instance`), and every
+> module's `_Ctx` StateSave/StateRead body now routes its `StateSav_*` calls
+> through its own instance, so a state save of instance X writes only X's
+> state to X's stream. Build passes; 20 s no-disk smoke run clean (no CIM);
+> a monitor-driven `savestate`/`loadstate` round-trip succeeds; Acid800
+> results identical to the pre-refactor baseline (23 success / 28 expected
+> failures / 2 skipped; the 2 FAILs — "MMU: XL banking" and "suite totals
+> changed" — are pre-existing, see
+> [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
+
+- [x] Convert: `StateSav_SaveAtariState`, `StateSav_ReadAtariState`,
       `StateSav_SaveUBYTE`, `StateSav_SaveUWORD`, `StateSav_SaveINT`,
       `StateSav_SaveFNAME`, `StateSav_ReadUBYTE`, `StateSav_ReadUWORD`,
       `StateSav_ReadINT`, `StateSav_ReadFNAME`, `StateSav_Tell`.
-- [ ] Make the save/read stream per-instance.
+      Done 2026-09-18: each is now
+      `StateSav_*_Ctx(Atari800_Instance *inst, ...)` in `statesav.c`, pinning
+      the file-scope context (`SS = &inst->statesav`) via
+      `STATESAV_PIN_CTX(inst)`; the stream is accessed through
+      `StateFile`/`nFileError` macros routed through `SS` (the stream is
+      stored opaquely as `void *` in `Statesav_state_t`, since it is a
+      `gzFile`, `FILE *` or `char *` depending on the build configuration).
+      In `statesav.h` the legacy names are forwarding macros passing
+      `Atari800_default`. `StateSav_Tell` (LIBATARI800 only) keeps its
+      signature — it reads the shared in-memory `plainmemoff` cursor of the
+      libatari800 save buffer (single-stream; revisit in Phase 5).
+      `SaveAtariState_Ctx`/`ReadAtariState_Ctx` dispatch to the module
+      `_Ctx` StateSave/StateRead functions with their own instance
+      (`Atari800_StateSave_Ctx(inst)`, `CARTRIDGE_StateSave_Ctx(inst)`,
+      `SIO_StateSave_Ctx(inst)`, `ANTIC_StateSave_Ctx(inst)`,
+      `CPU_StateSave(inst, ...)`, `GTIA_StateSave_Ctx(inst)`,
+      `PIA_StateSave_Ctx(inst)`, `POKEY_StateSave_Ctx(inst)`,
+      `XEP80_StateSave_Ctx(inst)`, `PBI_StateSave_Ctx(inst)`,
+      `PBI_MIO_StateSave_Ctx(inst)`, `PBI_BB_StateSave_Ctx(inst)`,
+      `PBI_XLD_StateSave_Ctx(inst)`). Build passes; monitor
+      `savestate`/`loadstate` round-trip OK; Acid800 results identical to
+      the pre-refactor baseline.
+- [x] Make the save/read stream per-instance.
+      Done 2026-09-18: `Statesav_state_t` (the opaque `StateFile` stream
+      pointer and `nFileError`) defined in
+      [`src/instance.h`](src/instance.h) and **embedded by value** in
+      `Atari800_Instance` (`.statesav`); defaults (NULL stream, no error)
+      match the old static initialisers via zero-init. The module
+      `_Ctx` StateSave/StateRead bodies (antic.c, gtia.c, pokey.c, pia.c,
+      memory.c, cartridge.c, sio.c, pbi.c, pbi_bb.c, pbi_mio.c, pbi_xld.c,
+      xep80.c, atari.c, cpu.c) were re-routed to call
+      `StateSav_*_Ctx(inst, ...)`, so the whole save/load path is
+      per-instance end-to-end. Transitional (still default-instance via the
+      forwarding macros): the platform ports (`dc/atari_dc.c`'s config
+      save, `amiga/amiga.c`, `android/jni/jni.c`, `libatari800/statesav.c`)
+      and `atari.c`'s `-state`-file read in `Atari800_Initialise`
+      (process-level, pins the default instance).
 
 ### 4.6 Monitor / debugger — [`src/monitor.h`](src/monitor.h), [`src/monitor.c`](src/monitor.c)
 
-- [ ] Convert: `MONITOR_Run`, `MONITOR_Exit`, `MONITOR_ShowState`, `MONITOR_BBRK_on`,
+- [x] Convert: `MONITOR_Run`, `MONITOR_Exit`, `MONITOR_ShowState`, `MONITOR_BBRK_on`,
       `MONITOR_BPC`.
-- [ ] Move state: `MONITOR_break_addr`, `MONITOR_break_step`, `MONITOR_break_ret`,
+      Done 2026-09-18: each is now
+      `MONITOR_*_Ctx(Atari800_Instance *inst, ...)` in `monitor.c`, pinning
+      the file-scope contexts (`MO = &inst->monitor`, `MI = inst`) via
+      `MONITOR_PIN_CTX(inst)`; the monitor-state aliases and the
+      emulator-state macros pulled in from the module headers (`CPU_reg*`,
+      `CPU_remember_*`, the `MEMORY_*` accessors, `ANTIC_*`, `GTIA_*`,
+      `POKEY_*`, `PIA_*`, `CARTRIDGE_main/piggyback`,
+      `Atari800_machine_type`) are `#undef`'ed and re-pointed to `MO`/`MI`
+      inside `monitor.c`, so the ~4000 lines of command bodies are unchanged
+      and operate on their own instance. In `monitor.h` the legacy names are
+      forwarding macros passing `Atari800_default`. `MONITOR_Run_Ctx` calls
+      `CPU_GetStatus(MI)`, `Atari800_Coldstart_Ctx(MI)`/`Warmstart_Ctx(MI)`,
+      and `StateSav_SaveAtariState_Ctx(MI, ...)`/`ReadAtariState_Ctx(MI, ...)`
+      (own instance). `cpu.c`'s `CPU_GO` re-points the monitor break/
+      breakpoint/coverage aliases to its own instance (so breakpoints fire
+      per instance) and passes its instance to `MONITOR_ShowState_Ctx`
+      (MONITOR_TRACE). Exceptions: `MONITOR_PreloadLabelFile` stays
+      context-free (the label/symtable state is process-global debug
+      tooling; it pins the default instance so its `Atari800_machine_type`
+      alias is valid). `cpu.c`'s `DO_BREAK` -> `ENTER_MONITOR` still enters
+      the process-level monitor loop (`Atari800_Exit`), which is inherently
+      single-instance (transitional). Build passes; monitor smoke run
+      (savestate/loadstate round-trip) OK; Acid800 results identical to the
+      pre-refactor baseline.
+- [x] Move state: `MONITOR_break_addr`, `MONITOR_break_step`, `MONITOR_break_ret`,
       `MONITOR_break_brk`, `MONITOR_ret_nesting`, `MONITOR_breakpoint_table[]`,
       `MONITOR_breakpoint_table_size`, `MONITOR_breakpoints_enabled`,
       `MONITOR_coverage[]`, `MONITOR_coverage_insns`, `MONITOR_coverage_cycles`.
-- [ ] Keep shared: `MONITOR_optype6502[256]` *(shared, read-only)*.
+      Done 2026-09-18: all moved into `Monitor_state_t`
+      ([`src/instance.h`](src/instance.h), which also now defines the
+      `MONITOR_breakpoint_cond`/`MONITOR_coverage_rec` typedefs and
+      `MONITOR_BREAKPOINT_TABLE_MAX`, moved there from `monitor.h` so the
+      table can be embedded by value) and **embedded by value** in
+      `Atari800_Instance` (`.monitor`); `monitor.c`/`monitor.h` alias the
+      legacy names to `Atari800_default->monitor.*`, and `cpu.c` re-points
+      them to its own instance inside `CPU_GO`. Default-instance init
+      preserved in the `default_instance_storage` initializer in `atari.c`
+      (`break_addr = 0xd000`, `breakpoints_enabled = TRUE`); the rest match
+      the old static initialisers via zero-init. Note:
+      `MONITOR_coverage[0x10000]` is ~1 MB per instance (MONITOR_PROFILE is
+      a non-default debug build option). Remaining file-scope in
+      `monitor.c` (debug tooling, treated as process-global): the
+      `symtable_*` label tables (MONITOR_HINTS), `MONITOR_trace_file`
+      (MONITOR_TRACE host output), `trainer_memory`/`trainer_flags`
+      (trainer scratch), the readline completion statics, and the
+      "repeat last command" function-local statics in `coverage()`/
+      `string_search()`/`print_graphics()`.
+- [x] Keep shared: `MONITOR_optype6502[256]` *(shared, read-only)* —
+      still a file-scope const global in `monitor.c`.
 
 ### 4.7 Config / ROM / util / log
 
-- [ ] **Cfg** — [`src/cfg.h`](src/cfg.h): `CFG_*` functions (config file handling
-      stays process-global, but per-instance options must be routed to the right
-      instance).
-- [ ] **Sysrom** — [`src/sysrom.h`](src/sysrom.h): `SYSROM_*` functions; ROM image
-      buffers *(shared, read-only)*.
-- [ ] **Util** — [`src/util.h`](src/util.h): `Util_*` helpers (mostly stateless;
-      audit for any hidden global state).
-- [ ] **Log** — [`src/log.h`](src/log.h): `Log_*` functions — **stays
-      process-global** (shared).
+> **Status: complete (2026-09-18).** This phase is an audit: these four modules
+> are intentionally **process-global** and stay that way for now. No signature
+> changes were needed. Build passes; 20 s no-disk XL smoke run clean (no CIM).
+
+- [x] **Cfg** — [`src/cfg.h`](src/cfg.h): `CFG_*` functions — **stays
+      process-global**. Audited 2026-09-18:
+      - `CFG_LoadConfig` / `CFG_WriteConfig` operate on the process-global
+        `rtconfig_filename` (file-static) and write per-instance emulator
+        options through the legacy-name aliases, which currently resolve to
+        `Atari800_default->...` (e.g. `MEMORY_ram_size`,
+        `Atari800_machine_type`, `Devices_enable_h_patch`). Since only the
+        default instance exists, this routing is correct today; when
+        multi-instance config support is added (Phase 5+), `CFG_LoadConfig` /
+        `CFG_WriteConfig` must gain an `Atari800_Instance *` parameter (or a
+        "config target instance" pointer) so per-instance options are written
+        to the right instance. Recorded as follow-up.
+      - `CFG_save_on_exit` and `CFG_data_dir` stay process-global
+        (config-file bookkeeping, not machine state).
+      - `CFG_MatchTextParameter` is stateless; signature unchanged.
+- [x] **Sysrom** — [`src/sysrom.h`](src/sysrom.h): `SYSROM_*` functions —
+      **stays process-global**. Audited 2026-09-18:
+      - `SYSROM_roms[]`, `SYSROM_os_versions[]`, `SYSROM_basic_version`,
+        `SYSROM_xegame_version` are configuration/ROM-selection state set once
+        at startup from the config file; they are consumed by
+        `MEMORY_InitialiseMachine` as *(shared, read-only)* ROM sources. Kept
+        global; when per-instance ROM selection is needed, these move into a
+        `SYSROM_state_t` reachable from the instance.
+      - The file-static `*_filename[FILENAME_MAX]` path buffers, `num_unset_roms`,
+        and the `cfg_strings*` / `autochoose_order_*` tables are
+        config-parsing-only state — process-global is correct.
+- [x] **Util** — [`src/util.h`](src/util.h): `Util_*` helpers — audited
+      2026-09-18: no hidden global/mutable state. The only `static` in
+      [`src/util.c`](src/util.c) is the helper function `parse_hashes`
+      (line 366) — a static *function*, not static *data*. All `Util_*`
+      functions are stateless/re-entrant; no changes needed.
+- [x] **Log** — [`src/log.h`](src/log.h): `Log_*` functions — **stays
+      process-global** (shared). Audited 2026-09-18: `Log_print` /
+      `Log_flushlog` only touch `Log_buffer` (present only with
+      `BUFFERED_LOG`), which is diagnostic output, not machine state. No
+      changes needed.
 
 ---
 
 ## Phase 5 — libatari800 library
 
-- [ ] **api.c** — `libatari800_init`, `libatari800_next_frame`, and the
-      `libatari800_get_*` accessors: re-implement on top of the instance API.
-- [ ] **init.c** — instance-aware initialization.
-- [ ] **input.c** — per-instance input array (`LIBATARI800_Input_array`).
-- [ ] **video.c** — per-instance framebuffer access.
-- [ ] **sound.c** — per-instance audio.
-- [ ] **statesav.c** — per-instance state save/load.
-- [ ] **main.c**, **exit.c**, **guess_settings.c** — update to instance API.
-- [ ] Add multi-instance entry points (`libatari800_new_instance`, etc.).
+> **Status: done (2026-09-18).** The library wrapper is re-implemented on top
+> of the instance API: every per-machine entry point now has a
+> `libatari800_*_Ctx(Atari800_Instance *inst, ...)` form, the legacy
+> un-suffixed names are forwarding macros over `Atari800_default` (declared
+> in [`src/libatari800/libatari800.h`](src/libatari800/libatari800.h)), and
+> the per-instance wrapper state (input template, in-memory state-save
+> buffer/tags, sound buffer) lives in the new `Libatari800_state_t`,
+> **embedded by value** in `Atari800_Instance` (`.libatari800`). The
+> PLATFORM_* callbacks (keyboard/joystick/triggers/sound) route through a
+> file-scope "current instance" pointer pinned by
+> `libatari800_next_frame_Ctx` / `LIBATARI800_Frame_Ctx`
+> (`LIBATARI800_SetCurrentInstance`/`CurrentInstance` in
+> [`src/libatari800/input.c`](src/libatari800/input.c)), so frames are
+> per-instance end-to-end under serialized (single-threaded) driving.
+> Multi-instance entry points `libatari800_new_instance` /
+> `libatari800_free_instance` were added. Verified: the libatari800 target
+> builds (`./configure --target=libatari800`), `libatari800_test` passes
+> (200 frames incl. a state save/load round-trip), an ad-hoc smoke test
+> creates a second instance alongside the default and runs 50 frames, the
+> default target still builds, Acid800 results identical to the pre-refactor
+> baseline (23 success / 28 expected failures / 2 skipped; the 2 FAILs —
+> "MMU: XL banking" and "suite totals changed" — are pre-existing, see
+> [`docs/acid800-expected-results.md`](acid800-expected-results.md)), and a
+> 20 s no-disk XL smoke run is clean (no CIM). Build fixes en route: the
+> default-instance initializer's `.xep80` block in
+> [`src/atari.c`](src/atari.c) is now guarded by `#ifdef XEP80_EMULATION`
+> (it referenced `XEP80_CHAR_HEIGHT_NTSC`, which does not exist in
+> non-XEP80 builds such as the libatari800 target), and
+> `libatari800.h`'s `ULONG` now matches `atari.h`'s (`unsigned int`) to
+> avoid a `-Wredefinition` under `-Werror`.
+
+- [x] **api.c** — [`src/libatari800/api.c`](src/libatari800/api.c):
+      `libatari800_init`, `libatari800_next_frame`, and the
+      `libatari800_get_*` accessors re-implemented on top of the instance
+      API. Done 2026-09-18: each per-machine function is now
+      `libatari800_*_Ctx(Atari800_Instance *inst, ...)`; the bodies operate
+      on `inst` directly (`inst->memory.mem`, `inst->screen.atari`,
+      `inst->libatari800.*`, `inst->nframes`, `inst->tv_mode`,
+      `inst->cpu.cim_encountered`, `inst->antic.dlist`,
+      `inst->input.key_code`, `inst->esc.enable_sio_patch`,
+      `inst->memory.selftest_enabled`) and call the module `_Ctx` functions
+      with their own instance (`SIO_Mount_Ctx`, `Atari800_Coldstart_Ctx`,
+      `LIBATARI800_Mouse_Ctx`, `LIBATARI800_Frame_Ctx`,
+      `LIBATARI800_StateSave_Ctx`/`StateLoad_Ctx`). In
+      [`src/libatari800/libatari800.h`](src/libatari800/libatari800.h) the
+      legacy names are forwarding macros passing `Atari800_default` (the
+      header forward-declares `struct Atari800_Instance` and the
+      `Atari800_default` extern, and typedefs it as
+      `libatari800_instance_t`). Exceptions (process-level, unchanged):
+      `libatari800_init` (drives the process-level `Atari800_Initialise`,
+      which sets up the default instance), `libatari800_exit`,
+      `libatari800_error_message`,
+      `libatari800_continue_emulation_on_brk`,
+      `libatari800_set_disk_activity_callback`, and the
+      `libatari800_cpu_crash` jmp_buf / `libatari800_error_code` /
+      `libatari800_continue_on_brk` globals (per-frame flow control, shared;
+      the jmp_buf is only live within one `next_frame` call). Transitional
+      (still default-instance): `AFILE_OpenFile` in
+      `libatari800_reboot_with_file_Ctx` (AFILE is not yet instance-aware)
+      and the `Sound_out` reads in the sound accessors (Sound module,
+      Phase 4.3).
+- [x] **init.c** — [`src/libatari800/init.c`](src/libatari800/init.c):
+      `LIBATARI800_Initialise`/`ReadConfig`/`Exit` audited — they only touch
+      the process-global `libatari800_continue_on_brk` flag (config option
+      `LIBATARI800_CONTINUE_ON_BRK`), which is shared flow control, not
+      machine state. No signature changes needed.
+- [x] **input.c** — [`src/libatari800/input.c`](src/libatari800/input.c):
+      per-instance input array. Done 2026-09-18: the input template pointer
+      moved into `Libatari800_state_t.input_array`
+      ([`src/instance.h`](src/instance.h)); `input.h` aliases
+      `LIBATARI800_Input_array` to
+      `Atari800_default->libatari800.input_array`. `PLATFORM_Keyboard`,
+      `PLATFORM_PORT`, `PLATFORM_TRIG` and `LIBATARI800_Mouse_Ctx(inst)`
+      read the current instance's template and `#undef`/re-point the
+      emulator-state aliases they write (`INPUT_key_shift/key_consol`,
+      `BINLOAD_pause_loading`, `INPUT_mouse_delta_x/y`, `INPUT_mouse_buttons`,
+      `POKEY_POT_input`, `INPUT_mouse_port`) to that instance, so input is
+      per-instance end-to-end. The file-scope `lastkey`/`key_control` scratch
+      statics remain file-scope (per-call transient). `LIBATARI800_Mouse`
+      legacy name is a forwarding macro in
+      [`src/libatari800/input.h`](src/libatari800/input.h).
+- [x] **video.c** — [`src/libatari800/video.c`](src/libatari800/video.c):
+      audited — `PLATFORM_DisplayScreen` is a no-op stub and
+      `LIBATARI800_Video_Initialise`/`Exit` are stateless; the framebuffer
+      access is per-instance via `libatari800_get_screen_ptr_Ctx`
+      (`inst->screen.atari`). No changes needed.
+- [x] **sound.c** — [`src/libatari800/sound.c`](src/libatari800/sound.c):
+      per-instance audio. Done 2026-09-18: the sound buffer, fill level,
+      hardware buffer size, `sample_diff` and `sample_residual` moved into
+      `Libatari800_state_t`; `sound.h` aliases the legacy names to
+      `Atari800_default->libatari800.*`. `PLATFORM_SoundSetup`/`Exit`/
+      `Available`/`Write` operate on the current instance (pinned via
+      `LIBATARI800_CurrentInstance()`), so each instance owns its sound
+      buffer. Transitional (still process-global): `Sound_out` (Sound
+      module, Phase 4.3) and `Atari800_tv_mode` in `PLATFORM_SoundSetup`
+      (read through the default-instance alias; sound setup happens at
+      process init).
+- [x] **statesav.c** — [`src/libatari800/statesav.c`](src/libatari800/statesav.c):
+      per-instance state save/load. Done 2026-09-18: `LIBATARI800_StateSave`
+      /`StateLoad` are now `*_Ctx(inst, ...)`; the in-memory buffer and tag
+      table live in `inst->libatari800.statesav_buffer`/`statesav_tags`
+      (legacy names aliased to the default instance in
+      [`src/libatari800/statesav.h`](src/libatari800/statesav.h)). In
+      [`src/statesav.c`](src/statesav.c) the LIBATARI800 in-memory stream is
+      now selected per save/load: `StateSav_SaveAtariState_Ctx`/
+      `ReadAtariState_Ctx` copy `inst->libatari800.statesav_buffer` into a
+      file-scope pointer consumed by `mem_open()`, and `STATESAV_TAG`
+      ([`src/statesav.h`](src/statesav.h)) writes
+      `inst->libatari800.statesav_tags` (all use sites are inside `_Ctx`
+      functions with `inst` in scope). The `plainmemoff` cursor behind
+      `StateSav_Tell` remains a single shared stream (saves are serialized;
+      the pre-existing §4.5 note stands).
+- [x] **main.c**, **exit.c**, **guess_settings.c** — update to instance API.
+      Done 2026-09-18: `LIBATARI800_Frame` is now
+      `LIBATARI800_Frame_Ctx(Atari800_Instance *inst)`
+      ([`src/libatari800/main.c`](src/libatari800/main.c)), pinning the
+      current instance and calling the module `_Ctx` functions with it
+      (`Atari800_Coldstart/Warmstart_Ctx`, `PBI_BB_Frame_Ctx`,
+      `Devices_Frame_Ctx`, `INPUT_Frame_Ctx`, `GTIA_Frame_Ctx`,
+      `ANTIC_Frame_Ctx`, `INPUT_DrawMousePointer_Ctx`,
+      `Screen_Draw*_Ctx`, `POKEY_Frame_Ctx`); `inst->nframes++` replaces the
+      global. Transitional (still default-instance): `VOTRAXSND_Frame`
+      (Votrax deferred, §3.7) and `Sound_Update` (Phase 4.3).
+      `PLATFORM_Initialise`/`PLATFORM_Configure`/`PLATFORM_Exit`
+      ([`src/libatari800/exit.c`](src/libatari800/exit.c)) are process-level
+      and unchanged. `guess_settings.c` and `libatari800_test.c` use the
+      legacy forwarding macros and compile unchanged.
+- [x] Add multi-instance entry points (`libatari800_new_instance`, etc.).
+      Done 2026-09-18: `libatari800_new_instance()` (wraps
+      `Atari800_NewInstance`) and `libatari800_free_instance()` (wraps
+      `Atari800_FreeInstance`) declared in
+      [`src/libatari800/libatari800.h`](src/libatari800/libatari800.h);
+      verified with an ad-hoc smoke test (second instance created and freed
+      alongside 50 frames on the default instance). **Follow-up (Phase 5+ /
+      cross-cutting):** a newly created instance has only the built-in
+      defaults — full per-instance initialization (config parsing, ROM
+      selection, `Atari800_InitialiseMachine`) still routes through the
+      process-level `Atari800_Initialise`; per-instance config support is
+      the recorded §4.7 CFG follow-up. Until then, only the default instance
+      is fully initialized.
 
 ---
 
 ## Phase 6 — Platform ports
 
-- [ ] **SDL** — [`src/sdl/`](src/sdl/): `main.c`, `init.c`, `input.c`, `sound.c`,
-      `video.c`, `video_gl.c`, `video_sw.c`, `palette.c`.
-- [ ] **X11** — [`src/atari_x11.c`](src/atari_x11.c).
-- [ ] **Raspberry Pi** — [`src/atari_rpi.c`](src/atari_rpi.c).
-- [ ] **Curses** — [`src/atari_curses.c`](src/atari_curses.c).
-- [ ] **BASIC** — [`src/atari_basic.c`](src/atari_basic.c).
-- [ ] **PS2** — [`src/atari_ps2.c`](src/atari_ps2.c).
-- [ ] **Amiga** — [`src/amiga/`](src/amiga/).
-- [ ] **Android** — [`src/android/`](src/android/).
-- [ ] **macOS** — [`src/macosx/`](src/macosx/).
-- [ ] **Falcon** — [`src/falcon/`](src/falcon/).
-- [ ] **Dreamcast** — [`src/dc/`](src/dc/).
-- [ ] **DOS** — [`src/dos/`](src/dos/).
-- [ ] **WinCE** — [`src/wince/`](src/wince/).
-- [ ] **GLES2** — [`src/gles2/`](src/gles2/).
-- [ ] **Java NVM** — [`src/javanvm/`](src/javanvm/).
+> **Status: complete (2026-09-19).** The Phase 6 blockers recorded in
+> earlier phases are resolved: the per-instance palettes (`Colours_table`,
+> `AF80_palette`, `BIT3_palette`) now live in the instance state and
+> [`src/sdl/palette.c`](src/sdl/palette.c) resolves them at runtime instead
+> of from a static initialiser; the two flagged port fixes
+> (`wince/port/main.c` self-declared externs, `atari_rpi.c` self-declared
+> NTSC-filter globals) are done. The remaining ports (§6.3) were audited
+> (2026-09-19): every port touches per-instance emulator state only at
+> runtime through the header aliases/forwarding macros — no port has a
+> static initialiser dereferencing per-instance state (the only such
+> blocker, `sdl/palette.c`, was resolved in §6.1) and no port defines a
+> global that shadows per-instance emulator state. Per the phase note
+> below, the standalone ports keep driving the single default instance
+> through the aliases/forwarding macros, which is correct while the
+> multi-instance API is exposed only through `libatari800`; converting the
+> port files to explicit `_Ctx` calls is deferred until a port actually
+> needs to drive a non-default instance. Build passes; 20 s no-disk XL
+> smoke run clean (no CIM); Acid800 results identical to the pre-refactor
+> baseline (23 success / 28 expected failures / 2 skipped; the 2 FAILs —
+> "MMU: XL banking" and "suite totals changed" — are pre-existing, see
+> [`docs/acid800-expected-results.md`](acid800-expected-results.md)).
+> **Audit note (2026-09-19):** `src/android/jni/sound.c` defines its own
+> `Sound_out`/`Sound_enabled`/`Sound_latency` (the Android port ships its
+> own `sound.c` in place of the core one) — that is a Phase 4.3 (Sound)
+> concern, not a Phase 6 blocker; recorded there.
+
+### 6.1 SDL — [`src/sdl/`](src/sdl/)
+
+- [x] **Per-instance palettes end-to-end** (the recorded Phase 6 blocker).
+      Done 2026-09-19: `Colours_table[256]` moved into `Colours_state_t`
+      (`Colours_state_t.table`,
+      [`src/instance.h`](src/instance.h)); `colours.c` aliases the legacy
+      name to the pinned context (`CO->table`) and `colours.h` aliases it to
+      `Atari800_default->colours.table` for the not-yet-migrated callers
+      (`image_pcx.c`, `atari_x11.c`, and the amiga/dos/ps2/javanvm ports —
+      transitional). `AF80_palette[16]` moved into `AF80_state_t.palette`
+      (still derived from the shared read-only `rgbi_palette` table by
+      `AF80_Initialise_Ctx`); `BIT3_palette[2]` moved into
+      `BIT3_state_t.palette` (the old static initialiser values —
+      `0x000000`/`0xFFFFFF` — are preserved in the default-instance
+      initializer in `atari.c`). `sdl/palette.c`'s `SDL_PALETTE_tab` static
+      initialiser (which could not dereference `Atari800_default`) was
+      replaced with a runtime `SDL_PALETTE_Initialise()` that resolves the
+      tab pointers from `Atari800_default` (called at the top of
+      `SDL_VIDEO_Initialise` in `sdl/video.c`); the pointer targets never
+      change, so later palette-content updates are picked up automatically.
+      The SDL display path (video.c/video_sw.c/video_gl.c) consumes the
+      palettes through the unchanged `SDL_PALETTE_tab` interface. Build
+      passes; smoke run + Acid800 as above.
+- [x] Remaining SDL files (`main.c`, `init.c`, `input.c`, `sound.c`,
+      `video.c`, `video_gl.c`, `video_sw.c`): keep using the default
+      instance via the header aliases/forwarding macros — correct per the
+      phase note (single default instance; per-instance input/screen/sound
+      already exists in the core). Explicit `_Ctx` conversion deferred until
+      a port drives a non-default instance.
+
+### 6.2 Flagged port fixes
+
+- [x] **WinCE** — [`src/wince/port/main.c`](src/wince/port/main.c): the
+      self-declared `extern UBYTE *Screen_dirty;` /
+      `extern void Screen_EntireDirty(void);` were replaced with
+      `#include "screen.h"` (Screen_dirty is per-instance now, aliased to
+      the default instance via the header). Not part of the Linux build
+      (Windows CE headers unavailable), so compile-verified by inspection
+      only.
+- [x] **Raspberry Pi** — [`src/atari_rpi.c`](src/atari_rpi.c): the
+      self-declared `FILTER_NTSC_emu`/`FILTER_NTSC_setup` dummies now
+      `#include "filter_ntsc.h"` and `#undef` the header aliases before
+      defining the port-local stubs, so the file no longer silently
+      diverges from `Filter_ntsc_state_t` when the RPi build starts using
+      the real filter module. Not part of the Linux build
+      (`bcm_host.h` unavailable), so compile-verified by inspection only.
+
+### 6.3 Remaining ports
+
+> **Status: audited (2026-09-19).** Each port below was audited for
+> compatibility with the per-instance refactor: all uses of per-instance
+> emulator state (`Screen_atari`, `Colours_table`, `POKEY_POT_input`, ...)
+> are runtime accesses through the header aliases (default instance), no
+> port has a static initialiser dereferencing per-instance state, and no
+> port defines a global that shadows per-instance emulator state (the
+> port-local globals found — `amiga.c`'s `fps`/directory strings,
+> `atari_dc.c`'s `db_mode`/`screen_tv_mode`/`emulate_paddles`, the
+> `gles2/video.c` `op_filtering`/`op_zoom` options, the `wince`/`android`
+> port-local UI flags — are all port-private). The ports keep driving the
+> single default instance via the aliases/forwarding macros, which is
+> correct per the phase note; explicit `_Ctx` conversion is deferred until
+> a port needs to drive a non-default instance. Ports not in the Linux
+> build (all except X11) were compile-verified by inspection only.
+
+- [x] **X11** — [`src/atari_x11.c`](src/atari_x11.c). Audited 2026-09-19:
+      `Colours_table` (palette copy loop) and `POKEY_POT_input` (mouse
+      paddle emulation) are runtime uses via the `colours.h`/`pokey.h`
+      aliases (transitional: default instance); the `static int
+      window_height = Screen_HEIGHT` etc. initialisers use macro constants
+      only. Builds as part of the tree.
+- [x] **Raspberry Pi** — [`src/atari_rpi.c`](src/atari_rpi.c). Audited
+      2026-09-19: the flagged NTSC-filter fix is done (§6.2); the
+      port-local `op_filtering`/`op_zoom` globals are port-private (shared
+      with `gles2/video.c`, not emulator state). Not in the Linux build;
+      verified by inspection.
+- [x] **Curses** — [`src/atari_curses.c`](src/atari_curses.c). Audited
+      2026-09-19: framebuffer access via the `screen.h` aliases only
+      (runtime). Not in the Linux build; verified by inspection.
+- [x] **BASIC** — [`src/atari_basic.c`](src/atari_basic.c). Audited
+      2026-09-19: uses `ui_basic.c`'s `Screen_atari` rendering helpers
+      (runtime, via the `screen.h` aliases). Not in the Linux build;
+      verified by inspection.
+- [x] **PS2** — [`src/atari_ps2.c`](src/atari_ps2.c). Audited 2026-09-19:
+      `Colours_table` (CLUT build) and `Screen_atari` (texture memory) are
+      runtime uses via the aliases. Not in the Linux build; verified by
+      inspection.
+- [x] **Amiga** — [`src/amiga/`](src/amiga/). Audited 2026-09-19:
+      `Colours_table`/`Screen_atari` runtime uses via the aliases; the
+      port-local globals (`fps`, `atari_disk_dirs`, `program_name`, ...)
+      are port-private. Not in the Linux build; verified by inspection.
+- [x] **Android** — [`src/android/`](src/android/). Audited 2026-09-19:
+      the JNI layer's globals are port-private; `jni.c`'s `extern void
+      Sound_Exit/Pause/Continue` declarations match the still
+      process-global Sound module (Phase 4.3). Note:
+      `android/jni/sound.c` defines its own `Sound_out`/`Sound_enabled`/
+      `Sound_latency` (the port ships its own `sound.c` replacing the
+      core one) — a Phase 4.3 concern, recorded there. Not in the Linux
+      build; verified by inspection.
+- [x] **macOS** — [`src/macosx/`](src/macosx/). Shipped as a tarball
+      (`macosx.tar.gz`); no in-tree sources to audit.
+- [x] **Falcon** — [`src/falcon/`](src/falcon/). Audited 2026-09-19:
+      `Screen_atari` runtime use via the `screen.h` alias; the port-local
+      keyboard/palette globals are port-private. Not in the Linux build;
+      verified by inspection.
+- [x] **Dreamcast** — [`src/dc/`](src/dc/). Audited 2026-09-19: the
+      port-local globals (`db_mode`, `screen_tv_mode`, `emulate_paddles`,
+      declared `extern` by `ui.c` under `DREAMCAST`) are port-private;
+      the config save path uses the `StateSav_*` forwarding macros
+      (transitional: default instance, per §4.5). Not in the Linux build;
+      verified by inspection.
+- [x] **DOS** — [`src/dos/`](src/dos/). Audited 2026-09-19:
+      `atari_vga.c`'s `static int scr_ptr_inc = Screen_WIDTH` initialiser
+      uses a macro constant only; `Screen_atari` accesses are runtime via
+      the alias. Not in the Linux build; verified by inspection.
+- [x] **WinCE** — [`src/wince/`](src/wince/). Audited 2026-09-19: the
+      flagged `port/main.c` fix is done (§6.2); the remaining port-local
+      globals (`smooth_filter`, `virtual_joystick`, ..., declared `extern`
+      by `ui.c` under `_WIN32_WCE`) are port-private. Not in the Linux
+      build; verified by inspection.
+- [x] **GLES2** — [`src/gles2/`](src/gles2/). Audited 2026-09-19: the
+      port-local `op_filtering`/`op_zoom` globals are port-private (same
+      names as the RPi port's). Not in the Linux build; verified by
+      inspection.
+- [x] **Java NVM** — [`src/javanvm/`](src/javanvm/). Audited 2026-09-19:
+      no per-instance emulator state referenced outside the header
+      aliases. Not in the Linux build; verified by inspection.
 
 > **Note:** The standalone ports can initially keep using a single default
 > instance while the multi-instance API is exposed through `libatari800`.
+> Explicit `_Ctx` conversion of the port files is deferred until a port
+> actually needs to drive a non-default instance.
 
 ---
 

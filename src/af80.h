@@ -5,14 +5,13 @@
 #include "instance.h" /* Atari800_Instance (transitional default-instance aliases) */
 #include <stdio.h>
 
-extern int AF80_palette[16];
-
 /* Transitional Option C bridge: the per-instance AF80 state lives in
    AF80_state_t (instance.h). Until all callers pass an instance
    explicitly, the legacy global names are aliased to the default
-   instance. AF80_palette is intentionally kept as a real file-scope
-   global in af80.c (it is derived from the shared read-only RGBI table
-   and referenced from static initialisers in sdl/palette.c). */
+   instance. AF80_palette lives in AF80_state_t.palette (derived from
+   the shared read-only RGBI table by AF80_Initialise); sdl/palette.c
+   resolves the pointer at runtime (SDL_PALETTE_Initialise). */
+#define AF80_palette (Atari800_default->af80.palette)
 
 /* Context-aware entry points (Option C). The legacy names below are
    forwarding macros that pass the default instance, so not-yet-migrated

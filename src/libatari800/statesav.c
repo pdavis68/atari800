@@ -1,5 +1,6 @@
 /*
- * libatari800/video.c - Atari800 as a library - saving the emulator's state to a file
+ * libatari800/statesav.c - Atari800 as a library - saving the emulator's
+ * state to an in-memory buffer
  *
  * Copyright (c) 2001-2002 Jacek Poplawski
  * Copyright (C) 2001-2010 Atari800 development team (see DOC/CREDITS)
@@ -28,19 +29,18 @@
 
 #include "platform.h"
 #include "libatari800/statesav.h"
-#include "libatari800/init.h"
 
-UBYTE *LIBATARI800_StateSav_buffer = NULL;
-statesav_tags_t *LIBATARI800_StateSav_tags = NULL;
-
-
-void LIBATARI800_StateSave(UBYTE *buffer, statesav_tags_t *tags) {
-    LIBATARI800_StateSav_buffer = buffer;
-    LIBATARI800_StateSav_tags = tags;
-	StateSav_SaveAtariState(NULL, NULL, 0);
+void LIBATARI800_StateSave_Ctx(Atari800_Instance *inst, UBYTE *buffer, statesav_tags_t *tags) {
+	inst->libatari800.statesav_buffer = buffer;
+	inst->libatari800.statesav_tags = tags;
+	StateSav_SaveAtariState_Ctx(inst, NULL, NULL, 0);
 }
 
-void LIBATARI800_StateLoad(UBYTE *buffer) {
-    LIBATARI800_StateSav_buffer = buffer;
-	StateSav_ReadAtariState(NULL, NULL);
+void LIBATARI800_StateLoad_Ctx(Atari800_Instance *inst, UBYTE *buffer) {
+	inst->libatari800.statesav_buffer = buffer;
+	StateSav_ReadAtariState_Ctx(inst, NULL, NULL);
 }
+
+/*
+vim:ts=4:sw=4:
+*/

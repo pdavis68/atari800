@@ -42,7 +42,9 @@ void StateSav_ReadFNAME_Ctx(Atari800_Instance *inst, char *filename);
 ULONG StateSav_Tell(void);
 #include "libatari800/statesav.h"
 /* STATESAV_MAX_SIZE defined in libatari800 include file */
-#define STATESAV_TAG(a) (LIBATARI800_StateSav_tags->a = StateSav_Tell())
+/* The tag table is per-instance (inst->libatari800.statesav_tags); every
+   use site is inside a *_Ctx function with `inst` in scope. */
+#define STATESAV_TAG(a) do { if (inst->libatari800.statesav_tags) inst->libatari800.statesav_tags->a = StateSav_Tell(); } while (0)
 #else /* LIBATARI800 */
 #define STATESAV_MAX_SIZE 210000 /* max size of state save data */
 #define STATESAV_TAG(a)

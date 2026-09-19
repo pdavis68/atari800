@@ -602,6 +602,9 @@ typedef struct AF80_state_t {
 	int not_enable_80_column_output;
 	int video_bank_select;        /* bits 0-3 of d5f6, $0-$f 16 banks */
 	int crtreg[0x40];
+	/* 16-entry display palette (derived from the shared RGBI table by
+	   AF80_Initialise). */
+	int palette[16];
 } AF80_state_t;
 
 typedef struct PROTO80_state_t {
@@ -626,6 +629,8 @@ typedef struct BIT3_state_t {
 	int video_latch;
 	int rom_bank_select;          /* bits 5 and 0-2 of d508, $0-$f 16 banks */
 	UBYTE crtreg[0x40];
+	/* 2-entry display palette (black / white). */
+	int palette[2];
 } BIT3_state_t;
 
 typedef struct RTIME_state_t {
@@ -824,6 +829,8 @@ typedef struct Colours_state_t {
 	   (point into ntsc_* or pal_* above). */
 	Colours_setup_t *setup;
 	COLOURS_EXTERNAL_t *external;
+	/* The computed 256-entry palette (updated by Colours_Update). */
+	int table[256];
 } Colours_state_t;
 
 typedef struct Sound_state_t Sound_state_t;
@@ -888,6 +895,43 @@ typedef struct Monitor_state_t {
 } Monitor_state_t;
 
 /* ------------------------------------------------------------------ */
+/* libatari800 library wrapper (libatari800/)                         */
+/* ------------------------------------------------------------------ */
+
+/* Forward typedefs for the public libatari800 types (defined in
+   libatari800/libatari800.h). Only pointers to them are embedded here, so
+   the forward declarations are sufficient and instance.h does not need to
+   include the public library header. */
+typedef struct input_template_s input_template_t;
+typedef struct statesav_tags_s statesav_tags_t;
+
+typedef struct Libatari800_state_t {
+	/* Input: the caller-supplied input template for the current frame
+	   (previously the file-scope global LIBATARI800_Input_array). */
+	input_template_t *input_array;
+
+	/* State save/load: the caller-supplied in-memory state buffer and the
+	   tag table (previously the file-scope globals
+	   LIBATARI800_StateSav_buffer / LIBATARI800_StateSav_tags). */
+	UBYTE *statesav_buffer;
+	statesav_tags_t *statesav_tags;
+
+	/* Sound: the library's sound output buffer and fill level
+	   (previously the file-scope globals LIBATARI800_Sound_array,
+	   sound_array_fill and sound_hw_buffer_size in
+	   libatari800/sound.c). */
+	UBYTE *sound_array;
+	unsigned int sound_array_fill;
+	unsigned int sound_hw_buffer_size;
+	/* Difference between the integer buffer_frames count and the exact
+	   fractional samples per frame, plus the accumulated fractional
+	   residual (previously the file-scope/static sample_diff and the
+	   global sample_residual in libatari800/sound.c). */
+	double sample_diff;
+	double sample_residual;
+} Libatari800_state_t;
+
+/* ------------------------------------------------------------------ */
 /* Top-level instance                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -930,6 +974,7 @@ typedef struct Atari800_Instance {
 	Statesav_state_t statesav;
 	Monitor_state_t monitor;
 	Sound_state_t *sound;
+	Libatari800_state_t libatari800;
 
 	/* Top-level configuration */
 	int machine_type;

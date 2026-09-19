@@ -102,14 +102,18 @@ int PLATFORM_Initialise(int *argc, char *argv[])
 }
 
 
-void LIBATARI800_Frame(void)
+void LIBATARI800_Frame_Ctx(Atari800_Instance *inst)
 {
-	switch (INPUT_key_code) {
+	/* Pin this instance so the PLATFORM_* callbacks (keyboard, joystick,
+	   triggers, sound) below and inside the frame operate on it. */
+	LIBATARI800_SetCurrentInstance(inst);
+
+	switch (inst->input.key_code) {
 	case AKEY_COLDSTART:
-		Atari800_Coldstart();
+		Atari800_Coldstart_Ctx(inst);
 		break;
 	case AKEY_WARMSTART:
-		Atari800_Warmstart();
+		Atari800_Warmstart_Ctx(inst);
 		break;
 	case AKEY_UI:
 		PLATFORM_Exit(TRUE);  /* run monitor */
@@ -119,22 +123,22 @@ void LIBATARI800_Frame(void)
 	}
 
 #ifdef PBI_BB
-	PBI_BB_Frame(); /* just to make the menu key go up automatically */
+	PBI_BB_Frame_Ctx(inst); /* just to make the menu key go up automatically */
 #endif
 #if defined(PBI_XLD) || defined (VOICEBOX)
-	VOTRAXSND_Frame(); /* for the Votrax */
+	VOTRAXSND_Frame(); /* for the Votrax (transitional: default instance) */
 #endif
-	Devices_Frame();
-	INPUT_Frame();
-	GTIA_Frame();
-	ANTIC_Frame(TRUE);
-	INPUT_DrawMousePointer();
-	Screen_DrawAtariSpeed(Util_time());
-	Screen_DrawDiskLED();
-	Screen_Draw1200LED();
-	POKEY_Frame();
-	Sound_Update();
-	Atari800_nframes++;
+	Devices_Frame_Ctx(inst);
+	INPUT_Frame_Ctx(inst);
+	GTIA_Frame_Ctx(inst);
+	ANTIC_Frame_Ctx(inst, TRUE);
+	INPUT_DrawMousePointer_Ctx(inst);
+	Screen_DrawAtariSpeed_Ctx(inst, Util_time());
+	Screen_DrawDiskLED_Ctx(inst);
+	Screen_Draw1200LED_Ctx(inst);
+	POKEY_Frame_Ctx(inst);
+	Sound_Update(); /* Sound module not yet instance-aware (Phase 4.3) */
+	inst->nframes++;
 }
 
 

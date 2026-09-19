@@ -11,8 +11,10 @@ typedef struct SDL_PALETTE_tab_t {
 } SDL_PALETTE_tab_t;
 
 /* Contains pointers to palettes used by various display modes, and their sizes.
-   The table is indexed by a VIDEOMODE_MODE_t value. */
-extern SDL_PALETTE_tab_t const SDL_PALETTE_tab[VIDEOMODE_MODE_SIZE];
+   The table is indexed by a VIDEOMODE_MODE_t value. The pointers are
+   resolved at runtime by SDL_PALETTE_Initialise() (they point into the
+   per-instance state of the default instance). */
+extern SDL_PALETTE_tab_t SDL_PALETTE_tab[VIDEOMODE_MODE_SIZE];
 
 typedef union SDL_PALETTE_buffer_t {
 	Uint16 bpp16[256];	/* 16-bit palette */
@@ -23,6 +25,10 @@ typedef union SDL_PALETTE_buffer_t {
 /* Holds all palette values for the currently-used pixel format (BGR, RGB,
    ARGB etc.) */
 extern SDL_PALETTE_buffer_t SDL_PALETTE_buffer;
+
+/* Resolves the SDL_PALETTE_tab palette pointers (must be called before
+   the table is used, i.e. at SDL video init). */
+void SDL_PALETTE_Initialise(void);
 
 void SDL_PALETTE_Calculate32_A8R8G8B8(void *dest, int const *palette, int size);
 void SDL_PALETTE_Calculate32_B8G8R8A8(void *dest, int const *palette, int size);

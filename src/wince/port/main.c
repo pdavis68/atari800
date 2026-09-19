@@ -42,8 +42,10 @@ char issmartphone = 0;
 
 extern int wince_main(int argc, char **argv);
 
-extern void Screen_EntireDirty(void);
-extern UBYTE *Screen_dirty;
+/* Phase 6: include the real headers instead of self-declared externs
+   (Screen_dirty is now per-instance state, aliased to the default
+   instance via screen.h). */
+#include "screen.h"
 //extern void OrientationChanged(void);
 
 static char **gargv = NULL;

@@ -33,9 +33,9 @@
 /* Transitional Option C bridge: the per-instance AF80 state lives in
    AF80_state_t (instance.h). The *_Ctx entry points pin the file-scope
    context (AF = &inst->af80, AFI = inst); the _Ctx bodies operate on
-   their own instance. AF80_palette stays a real file-scope global: it
-   is derived from the shared read-only RGBI table below and is
-   referenced from static initialisers in sdl/palette.c. */
+   their own instance. AF80_palette lives in AF80_state_t.palette and is
+   re-pointed to the pinned context below; sdl/palette.c resolves the
+   pointer at runtime (SDL_PALETTE_Initialise). */
 
 static Atari800_Instance *AFI;
 static AF80_state_t *AF;
@@ -64,7 +64,9 @@ static int const rgbi_palette[16] = {
 	0xFFFF55, /* yellow */
 	0xFFFFFF  /* white (high intensity) */
 };
-int AF80_palette[16];
+/* The display palette lives in AF80_state_t.palette (instance.h). */
+#undef AF80_palette
+#define AF80_palette (AF->palette)
 
 #ifdef AF80_DEBUG
 #define D(a) a

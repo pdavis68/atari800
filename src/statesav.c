@@ -46,6 +46,13 @@
 #include "atari.h"
 #include "statesav.h"
 
+#ifdef LIBATARI800
+/* Per-instance in-memory state buffer (libatari800 target): set by
+   StateSav_SaveAtariState_Ctx / StateSav_ReadAtariState_Ctx from
+   inst->libatari800.statesav_buffer and consumed by mem_open() below. */
+static UBYTE * libatari800_membuf;
+#endif
+
 /* Within this file the legacy names are real _Ctx functions, not the
    forwarding macros from statesav.h. */
 #undef StateSav_SaveAtariState
@@ -363,6 +370,14 @@ void StateSav_ReadFNAME_Ctx(Atari800_Instance *inst, char *filename)
 int StateSav_SaveAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode, UBYTE SaveVerbose)
 {
 	STATESAV_PIN_CTX(inst);
+#ifdef LIBATARI800
+	/* The in-memory state buffer is per-instance (selected by
+	   LIBATARI800_StateSave_Ctx); mem_open() below has no instance
+	   parameter, so it reads this file-scope pointer. Saves are
+	   serialized, so the pointer is only consumed by the GZOPEN call
+	   immediately following. */
+	libatari800_membuf = inst->libatari800.statesav_buffer;
+#endif
 	UBYTE StateVersion = SAVE_VERSION_NUMBER;
 
 	if (StateFile != NULL) {
@@ -450,6 +465,9 @@ int StateSav_SaveAtariState_Ctx(Atari800_Instance *inst, const char *filename, c
 int StateSav_ReadAtariState_Ctx(Atari800_Instance *inst, const char *filename, const char *mode)
 {
 	STATESAV_PIN_CTX(inst);
+#ifdef LIBATARI800
+	libatari800_membuf = inst->libatari800.statesav_buffer;
+#endif
 	char header_string[8];
 	UBYTE StateVersion = 0;  /* The version of the save file */
 	UBYTE SaveVerbose = 0;   /* Verbose mode means save basic, OS if patched */
@@ -685,7 +703,7 @@ static int mem_close(gzFile stream)
 /* replacement for GZOPEN */
 static gzFile mem_open(const char *name, const char *mode)
 {
-	plainmembuf = (char *)LIBATARI800_StateSav_buffer;
+	plainmembuf = (char *)libatari800_membuf;
 	plainmemoff = 0; /*HDR_LEN;*/
 	unclen = STATESAV_MAX_SIZE;
 	return (gzFile) plainmembuf;

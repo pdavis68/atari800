@@ -251,6 +251,7 @@ static Atari800_Instance default_instance_storage = {
 		.mouse_joy_inertia = 10,
 		.last_stick = {INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE, INPUT_STICK_CENTRE},
 	},
+#ifdef XEP80_EMULATION
 	/* XEP80: preserve the old file-scope static initialisers. */
 	.xep80 = {
 		.char_height = XEP80_CHAR_HEIGHT_NTSC,
@@ -261,6 +262,7 @@ static Atari800_Instance default_instance_storage = {
 		.attrib_b = 0xff,
 		.cursor_on = TRUE,
 	},
+#endif
 	.devices = {
 		.enable_h_patch = TRUE,
 		.enable_p_patch = TRUE,
@@ -270,6 +272,15 @@ static Atari800_Instance default_instance_storage = {
 		.h_exe_path = "H1:>DOS;>DOS",
 		.h_device_name = 'H',
 		.print_command = "lpr %s",
+	},
+	/* Monitor: preserve the old file-scope static initialisers. */
+	.monitor = {
+#ifdef MONITOR_BREAK
+		.break_addr = 0xd000,
+#endif
+#ifdef MONITOR_BREAKPOINTS
+		.breakpoints_enabled = TRUE,
+#endif
 	},
 	/* Screen: preserve the old file-scope static initialisers. */
 	.screen = {
@@ -285,6 +296,11 @@ static Atari800_Instance default_instance_storage = {
 		.show_multimedia_stats = TRUE,
 #endif
 		.percent_display = 100,
+	},
+	/* BIT3 display palette (was a static initialiser in bit3.c; moved
+		  into BIT3_state_t in Phase 6). */
+	.bit3 = {
+		.palette = { 0x000000, 0xFFFFFF },
 	},
 };
 Atari800_Instance *Atari800_default = &default_instance_storage;

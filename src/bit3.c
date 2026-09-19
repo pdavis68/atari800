@@ -34,8 +34,8 @@
 /* Transitional Option C bridge: the per-instance BIT3 state lives in
    BIT3_state_t (instance.h). The *_Ctx entry points pin the file-scope
    context (B3 = &inst->bit3, B3i = inst); the _Ctx bodies operate on
-   their own instance. BIT3_palette stays a real file-scope global
-   (referenced from a static initialiser in sdl/palette.c);
+   their own instance. BIT3_palette lives in BIT3_state_t.palette
+   (initialised in the default-instance initializer in atari.c);
    VIDEOMODE_80_column / VIDEOMODE_Set80Column remain process-global
    until the videomode module is converted (Phase 4, transitional). */
 
@@ -47,10 +47,9 @@ static BIT3_state_t *B3;
 	B3 = &(inst)->bit3; \
 } while (0)
 
-int BIT3_palette[2] = {
-	0x000000, /* black */
-	0xFFFFFF  /* white (high intensity) */
-};
+/* The display palette lives in BIT3_state_t.palette (instance.h). */
+#undef BIT3_palette
+#define BIT3_palette (B3->palette)
 
 #ifdef BIT3_DEBUG
 #define D(a) a

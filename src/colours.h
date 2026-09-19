@@ -3,8 +3,6 @@
 
 #include "colours_external.h"
 
-extern int Colours_table[256];
-
 typedef enum {
 	COLOURS_PRESET_STANDARD,
 	COLOURS_PRESET_DEEPBLACK,
@@ -102,12 +100,12 @@ double Colours_Linear2sRGB(double c);
 /* Transitional Option C bridge: the per-instance Colours state lives in
    Colours_state_t (instance.h). Until all callers pass an instance
    explicitly, the legacy global names are aliased to the default instance.
-   NOTE: Colours_table is still a real file-scope global in colours.c
-   (shared/transitional) because sdl/palette.c references it from a static
-   initialiser, which cannot dereference Atari800_default. */
+   Colours_table lives in Colours_state_t.table; sdl/palette.c resolves the
+   pointer at runtime (SDL_PALETTE_Initialise). */
 
 #define Colours_setup    (Atari800_default->colours.setup)
 #define Colours_external (Atari800_default->colours.external)
+#define Colours_table    (Atari800_default->colours.table)
 
 /* The legacy names below are forwarding macros that pass the default
    instance, so not-yet-migrated callers are unchanged. */

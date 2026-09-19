@@ -509,10 +509,35 @@ void CPU_GO(Atari800_Instance *inst, int limit)
 #define CPU_remember_xpos (inst->cpu.remember_xpos)
 #define CPU_remember_JMP (inst->cpu.remember_JMP)
 #define CPU_remember_jmp_curpos (inst->cpu.remember_jmp_curpos)
+/* Route the monitor break state to this instance's Monitor_state_t. */
+#undef MONITOR_break_addr
+#undef MONITOR_break_step
+#undef MONITOR_break_ret
+#undef MONITOR_break_brk
+#undef MONITOR_ret_nesting
+#define MONITOR_break_addr  (inst->monitor.break_addr)
+#define MONITOR_break_step  (inst->monitor.break_step)
+#define MONITOR_break_ret   (inst->monitor.break_ret)
+#define MONITOR_break_brk   (inst->monitor.break_brk)
+#define MONITOR_ret_nesting (inst->monitor.ret_nesting)
+#endif
+#ifdef MONITOR_BREAKPOINTS
+#undef MONITOR_breakpoint_table
+#undef MONITOR_breakpoint_table_size
+#undef MONITOR_breakpoints_enabled
+#define MONITOR_breakpoint_table        (inst->monitor.breakpoint_table)
+#define MONITOR_breakpoint_table_size   (inst->monitor.breakpoint_table_size)
+#define MONITOR_breakpoints_enabled     (inst->monitor.breakpoints_enabled)
 #endif
 #ifdef MONITOR_PROFILE
 #undef CPU_instruction_count
 #define CPU_instruction_count (inst->cpu.instruction_count)
+#undef MONITOR_coverage
+#undef MONITOR_coverage_insns
+#undef MONITOR_coverage_cycles
+#define MONITOR_coverage        (inst->monitor.coverage)
+#define MONITOR_coverage_insns  (inst->monitor.coverage_insns)
+#define MONITOR_coverage_cycles (inst->monitor.coverage_cycles)
 #endif
 #ifdef NO_GOTO
 #define OPCODE_ALIAS(code)	case 0x##code:
@@ -716,7 +741,7 @@ void CPU_GO(int limit)
 
 #ifdef MONITOR_TRACE
 		if (MONITOR_trace_file != NULL) {
-			MONITOR_ShowState(MONITOR_trace_file, GET_PC(), A, X, Y, S,
+			MONITOR_ShowState_Ctx(inst, MONITOR_trace_file, GET_PC(), A, X, Y, S,
 				(N & 0x80) ? 'N' : '-',
 #ifndef NO_V_FLAG_VARIABLE
 				V ? 'V' : '-',

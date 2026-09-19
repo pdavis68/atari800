@@ -9,9 +9,10 @@
 #define UWORD unsigned short
 #endif
 
+/* Must match atari.h's ULONG (unsigned int, 4 bytes) to avoid a
+   -Wredefinition in TUs that include both headers. */
 #ifndef ULONG
-#include <stdint.h>
-#define ULONG uint32_t
+#define ULONG unsigned int
 #endif
 
 #ifndef FALSE
@@ -95,7 +96,14 @@
 #define AKEY_5200_HASH 0x23
 #define AKEY_5200_ASTERISK 0x27
 
-typedef struct {
+/* The instance handle for the library API. The emulation core is fully
+   context-based (docs/multi-instance-refactor.md Option C); each instance is
+   an opaque Atari800_Instance. */
+struct Atari800_Instance;
+extern struct Atari800_Instance *Atari800_default;
+typedef struct Atari800_Instance libatari800_instance_t;
+
+typedef struct input_template_s {
     UBYTE keychar;
     UBYTE keycode;
     UBYTE special;
@@ -125,7 +133,7 @@ typedef struct {
    to prevent the need for a full parsing of the save state data to
    be able to find parts needed for the visualizer display
  */
-typedef struct {
+typedef struct statesav_tags_s {
     ULONG size;
     ULONG cpu;
     ULONG pc;
@@ -266,54 +274,112 @@ extern int libatari800_error_code;
 #define LIBATARI800_MEMO_PAD 6
 #define LIBATARI800_INVALID_ESCAPE_OPCODE 7
 
+/* ---- Multi-instance lifecycle API ---- */
+
+/* Create a new emulator instance with sensible defaults. Configure it with
+   libatari800_init_instance() (or mount images and coldstart manually). */
+libatari800_instance_t *libatari800_new_instance(void);
+
+/* Free an instance created by libatari800_new_instance(). */
+void libatari800_free_instance(libatari800_instance_t *inst);
+
+/* ---- Instance-aware (per-machine) API ----
+   Each function operates on the instance passed as its first argument. The
+   un-suffixed legacy names below are forwarding macros that operate on the
+   default instance created by libatari800_init(). */
+
+/* Initialise the library and the default instance from an argument list.
+   Process-level (config parsing, platform init); sets up Atari800_default. */
 int libatari800_init(int argc, char **argv);
 
 const char *libatari800_error_message();
 
 void libatari800_continue_emulation_on_brk(int cont);
 
-void libatari800_clear_input_array(input_template_t *input);
+void libatari800_clear_input_array_Ctx(libatari800_instance_t *inst, input_template_t *input);
+#define libatari800_clear_input_array(input) \
+	libatari800_clear_input_array_Ctx(Atari800_default, (input))
 
-int libatari800_next_frame(input_template_t *input);
+int libatari800_next_frame_Ctx(libatari800_instance_t *inst, input_template_t *input);
+#define libatari800_next_frame(input) \
+	libatari800_next_frame_Ctx(Atari800_default, (input))
 
-int libatari800_mount_disk_image(int diskno, const char *filename, int readonly);
+int libatari800_mount_disk_image_Ctx(libatari800_instance_t *inst, int diskno, const char *filename, int readonly);
+#define libatari800_mount_disk_image(diskno, filename, readonly) \
+	libatari800_mount_disk_image_Ctx(Atari800_default, (diskno), (filename), (readonly))
 
-int libatari800_reboot_with_file(const char *filename);
+int libatari800_reboot_with_file_Ctx(libatari800_instance_t *inst, const char *filename);
+#define libatari800_reboot_with_file(filename) \
+	libatari800_reboot_with_file_Ctx(Atari800_default, (filename))
 
-UBYTE *libatari800_get_main_memory_ptr();
+UBYTE *libatari800_get_main_memory_ptr_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_main_memory_ptr() \
+	libatari800_get_main_memory_ptr_Ctx(Atari800_default)
 
-UBYTE *libatari800_get_screen_ptr();
+UBYTE *libatari800_get_screen_ptr_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_screen_ptr() \
+	libatari800_get_screen_ptr_Ctx(Atari800_default)
 
-UBYTE *libatari800_get_sound_buffer();
+UBYTE *libatari800_get_sound_buffer_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sound_buffer() \
+	libatari800_get_sound_buffer_Ctx(Atari800_default)
 
-int libatari800_get_sound_buffer_len();
+int libatari800_get_sound_buffer_len_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sound_buffer_len() \
+	libatari800_get_sound_buffer_len_Ctx(Atari800_default)
 
-int libatari800_get_sound_buffer_allocated_size();
+int libatari800_get_sound_buffer_allocated_size_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sound_buffer_allocated_size() \
+	libatari800_get_sound_buffer_allocated_size_Ctx(Atari800_default)
 
-int libatari800_get_sound_frequency();
+int libatari800_get_sound_frequency_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sound_frequency() \
+	libatari800_get_sound_frequency_Ctx(Atari800_default)
 
-int libatari800_get_num_sound_channels();
+int libatari800_get_num_sound_channels_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_num_sound_channels() \
+	libatari800_get_num_sound_channels_Ctx(Atari800_default)
 
-int libatari800_get_sound_sample_size();
+int libatari800_get_sound_sample_size_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sound_sample_size() \
+	libatari800_get_sound_sample_size_Ctx(Atari800_default)
 
-float libatari800_get_fps();
+float libatari800_get_fps_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_fps() \
+	libatari800_get_fps_Ctx(Atari800_default)
 
-int libatari800_get_frame_number();
+int libatari800_get_frame_number_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_frame_number() \
+	libatari800_get_frame_number_Ctx(Atari800_default)
 
-void libatari800_get_current_state(emulator_state_t *state);
+void libatari800_get_current_state_Ctx(libatari800_instance_t *inst, emulator_state_t *state);
+#define libatari800_get_current_state(state) \
+	libatari800_get_current_state_Ctx(Atari800_default, (state))
 
-void libatari800_restore_state(emulator_state_t *state);
+void libatari800_restore_state_Ctx(libatari800_instance_t *inst, emulator_state_t *state);
+#define libatari800_restore_state(state) \
+	libatari800_restore_state_Ctx(Atari800_default, (state))
 
 void libatari800_exit();
 
 /* Disk management functions */
-int libatari800_mount_disk(int drive_num, const char *filename, int read_only);
-void libatari800_unmount_disk(int drive_num);
-void libatari800_disable_drive(int drive_num);
+int libatari800_mount_disk_Ctx(libatari800_instance_t *inst, int drive_num, const char *filename, int read_only);
+#define libatari800_mount_disk(drive_num, filename, read_only) \
+	libatari800_mount_disk_Ctx(Atari800_default, (drive_num), (filename), (read_only))
+void libatari800_unmount_disk_Ctx(libatari800_instance_t *inst, int drive_num);
+#define libatari800_unmount_disk(drive_num) \
+	libatari800_unmount_disk_Ctx(Atari800_default, (drive_num))
+void libatari800_disable_drive_Ctx(libatari800_instance_t *inst, int drive_num);
+#define libatari800_disable_drive(drive_num) \
+	libatari800_disable_drive_Ctx(Atari800_default, (drive_num))
 void libatari800_set_disk_activity_callback(void (*callback)(int drive, int operation));
 
 /* SIO patch control functions */
-int libatari800_get_sio_patch_enabled(void);
-int libatari800_set_sio_patch_enabled(int enabled);
+int libatari800_get_sio_patch_enabled_Ctx(libatari800_instance_t *inst);
+#define libatari800_get_sio_patch_enabled() \
+	libatari800_get_sio_patch_enabled_Ctx(Atari800_default)
+int libatari800_set_sio_patch_enabled_Ctx(libatari800_instance_t *inst, int enabled);
+#define libatari800_set_sio_patch_enabled(enabled) \
+	libatari800_set_sio_patch_enabled_Ctx(Atari800_default, (enabled))
 
 #endif /* LIBATARI800_H_ */

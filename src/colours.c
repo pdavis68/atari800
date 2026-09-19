@@ -44,8 +44,8 @@
 
 /* Per-instance context (Option C transitional pattern): the _Ctx entry
    points pin the file-scope context below; the legacy state names are
-   re-pointed to the pinned instance's Colours_state_t. Colours_table stays
-   a real file-scope global (shared/transitional) because sdl/palette.c
+   re-pointed to the pinned instance's Colours_state_t (including
+   Colours_table, which aliases CO->table inside this file).
    references it from a static initialiser. */
 static Atari800_Instance *COI;
 static Colours_state_t *CO;
@@ -76,7 +76,10 @@ static char const * const preset_cfg_strings[COLOURS_PRESET_SIZE] = {
 	"VIBRANT"
 };
 
-int Colours_table[256];
+/* The computed palette now lives in Colours_state_t.table (instance.h);
+   inside this file it is re-pointed to the pinned context. */
+#undef Colours_table
+#define Colours_table (CO->table)
 
 void Colours_SetRGB_Ctx(Atari800_Instance *inst, int i, int r, int g, int b, int *colortable_ptr)
 {

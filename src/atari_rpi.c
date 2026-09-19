@@ -89,6 +89,12 @@ void SDL_VIDEO_SetScanlinesPercentage(int value) {}
 int SDL_VIDEO_scanlines_percentage = 5;
 int SDL_VIDEO_width = 1;
 int SDL_VIDEO_height = 1;
+/* Phase 6: the NTSC-filter state is per-instance now (Filter_ntsc_state_t);
+   these dummies re-point to the default instance instead of defining
+   their own globals. */
+#include "filter_ntsc.h"
+#undef FILTER_NTSC_emu
+#undef FILTER_NTSC_setup
 atari_ntsc_t *FILTER_NTSC_emu = NULL;
 atari_ntsc_setup_t FILTER_NTSC_setup;
 void FILTER_NTSC_Update(atari_ntsc_t *filter) {}

@@ -483,6 +483,10 @@ int SDL_VIDEO_Initialise(int *argc, char *argv[])
 	int i, j;
 	int help_only = FALSE;
 
+	/* Resolve the display-palette pointers (they point into the
+	   per-instance palettes of the default instance). */
+	SDL_PALETTE_Initialise();
+
 	for (i = j = 1; i < *argc; i++) {
 		int i_a = (i + 1 < *argc);		/* is argument available? */
 		int a_m = FALSE;			/* error, argument missing! */

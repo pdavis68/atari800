@@ -34,24 +34,29 @@
 #include "init.h"
 #include "sound.h"
 #include "util.h"
+#include "libatari800/main.h"
 
-UBYTE *LIBATARI800_Sound_array;
-
-unsigned int sound_array_fill = 0;
-
-unsigned int sound_hw_buffer_size = 0;
-
-/* difference between an integer sample rate and the floating point sample rate, used
-   keep track of which frames need to drop a sample to stay at the constant audio
-   sampling rate */
-static double sample_diff;
-
-double sample_residual;
+/* The sound buffer state (LIBATARI800_Sound_array, sound_array_fill,
+   sound_hw_buffer_size, sample_diff, sample_residual) is per-instance
+   (Atari800_Instance.libatari800.*, see instance.h). Within this file the
+   legacy names are re-pointed to the current instance's fields, since the
+   PLATFORM_Sound* callbacks below are invoked for whichever instance is
+   currently being driven (pinned by libatari800_next_frame_Ctx). */
 
 int PLATFORM_SoundSetup(Sound_setup_t *setup)
 {
+	Atari800_Instance *LS = LIBATARI800_CurrentInstance();
 	double refresh_rate;
 	double samples_per_video_frame;
+
+#undef LIBATARI800_Sound_array
+#undef sound_hw_buffer_size
+#undef sample_diff
+#undef sample_residual
+#define LIBATARI800_Sound_array  (LS->libatari800.sound_array)
+#define sound_hw_buffer_size     (LS->libatari800.sound_hw_buffer_size)
+#define sample_diff              (LS->libatari800.sample_diff)
+#define sample_residual          (LS->libatari800.sample_residual)
 
 	refresh_rate = Atari800_tv_mode == Atari800_TV_PAL ? Atari800_FPS_PAL : Atari800_FPS_NTSC;
 	samples_per_video_frame = setup->freq / refresh_rate;
@@ -66,12 +71,24 @@ int PLATFORM_SoundSetup(Sound_setup_t *setup)
 	sample_diff = (double)setup->buffer_frames - samples_per_video_frame;
 	sample_residual = 0;
 
+#undef LIBATARI800_Sound_array
+#undef sound_hw_buffer_size
+#undef sample_diff
+#undef sample_residual
+#define LIBATARI800_Sound_array  (Atari800_default->libatari800.sound_array)
+#define sound_hw_buffer_size     (Atari800_default->libatari800.sound_hw_buffer_size)
+#define sample_diff              (Atari800_default->libatari800.sample_diff)
+#define sample_residual          (Atari800_default->libatari800.sample_residual)
+
 	return TRUE;
 }
 
 void PLATFORM_SoundExit(void)
 {
-	free(LIBATARI800_Sound_array);
+	Atari800_Instance *LS = LIBATARI800_CurrentInstance();
+
+	free(LS->libatari800.sound_array);
+	LS->libatari800.sound_array = NULL;
 }
 
 void PLATFORM_SoundPause(void)
@@ -85,7 +102,20 @@ void PLATFORM_SoundContinue(void)
 /* Called just before audio buffer is filled; used to initialize sound parameters */
 unsigned int PLATFORM_SoundAvailable(void)
 {
-	int buf_size = sound_hw_buffer_size;
+	Atari800_Instance *LS = LIBATARI800_CurrentInstance();
+	int buf_size;
+
+#undef sound_array_fill
+#undef sound_hw_buffer_size
+#define sound_array_fill     (LS->libatari800.sound_array_fill)
+#define sound_hw_buffer_size (LS->libatari800.sound_hw_buffer_size)
+
+	buf_size = sound_hw_buffer_size;
+
+#undef sample_diff
+#undef sample_residual
+#define sample_diff     (LS->libatari800.sample_diff)
+#define sample_residual (LS->libatari800.sample_residual)
 
 	/* Because the frame rate is not an integer (59.92 NTSC, 49.86 PAL), the sample
 	   rate will not be constant. For example, on NTSC with a sample rate of 44100Hz,
@@ -101,11 +131,32 @@ unsigned int PLATFORM_SoundAvailable(void)
 	}
 
 	sound_array_fill = 0;
+
+#undef sound_array_fill
+#undef sound_hw_buffer_size
+#define sound_array_fill     (Atari800_default->libatari800.sound_array_fill)
+#define sound_hw_buffer_size (Atari800_default->libatari800.sound_hw_buffer_size)
+
+#undef sample_diff
+#undef sample_residual
+#define sample_diff     (Atari800_default->libatari800.sample_diff)
+#define sample_residual (Atari800_default->libatari800.sample_residual)
+
 	return buf_size;
 }
 
 void PLATFORM_SoundWrite(UBYTE const *buffer, unsigned int size)
 {
-	memcpy(LIBATARI800_Sound_array, buffer, size);
+	Atari800_Instance *LS = LIBATARI800_CurrentInstance();
+
+	memcpy(LS->libatari800.sound_array, buffer, size);
+#undef sound_array_fill
+#define sound_array_fill (LS->libatari800.sound_array_fill)
 	sound_array_fill = size;
+#undef sound_array_fill
+#define sound_array_fill (Atari800_default->libatari800.sound_array_fill)
 }
+
+/*
+vim:ts=4:sw=4:
+*/
